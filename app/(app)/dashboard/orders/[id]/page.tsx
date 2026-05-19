@@ -7,6 +7,7 @@ import { formatNairaFromKobo } from "@/lib/format";
 import { buildWhatsAppLink } from "@/lib/whatsapp";
 
 import { OrderActionsBar } from "./order-actions-bar";
+import { ReceiptShare } from "./receipt-share";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,7 @@ export default async function OrderDetailPage(props: { params: Promise<{ id: str
 
   const { data: order, error } = await supabase
     .from("orders")
-    .select("id, status, source, subtotal_kobo, currency, notes, paid_at, cancelled_at, created_at, customer:customers(id, name, phone_e164), order_items(id, name_snapshot, price_kobo_snapshot, quantity, line_total_kobo)")
+    .select("id, status, source, subtotal_kobo, currency, notes, paid_at, cancelled_at, created_at, receipt_code, customer:customers(id, name, phone_e164), order_items(id, name_snapshot, price_kobo_snapshot, quantity, line_total_kobo)")
     .eq("id", id)
     .eq("business_id", business.id)
     .maybeSingle();
@@ -61,6 +62,7 @@ export default async function OrderDetailPage(props: { params: Promise<{ id: str
   const items = Array.isArray(order.order_items) ? order.order_items : [];
   const customerName = customer?.name ?? "Unknown customer";
   const customerPhone = customer?.phone_e164 ?? null;
+  const receiptCode = order.receipt_code as string | null;
 
   const whatsappLink = customerPhone
     ? buildWhatsAppLink(customerPhone, "Hi " + customerName + ", regarding your order: ")
@@ -138,6 +140,15 @@ export default async function OrderDetailPage(props: { params: Promise<{ id: str
           <p className="text-xs uppercase tracking-[0.14em] text-brand-primary">Paid</p>
           <p className="mt-1 text-sm text-text-secondary">{formatFullDate(order.paid_at)}</p>
         </section>
+      ) : null}
+
+      {status === "paid" && receiptCode ? (
+        <ReceiptShare
+          receiptCode={receiptCode}
+          customerName={customerName}
+          customerPhone={customerPhone}
+          businessName={business.name}
+        />
       ) : null}
 
       {status === "cancelled" && order.cancelled_at ? (
