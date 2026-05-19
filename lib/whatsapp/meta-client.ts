@@ -33,7 +33,7 @@ export async function verifyWhatsAppPhoneNumber(args: {
     return { ok: false, error: "Phone number ID and access token are required." };
   }
 
-  const url = GRAPH_BASE + "/" + encodeURIComponent(phoneNumberId) + "?fields=display_phone_number,verified_name,whatsapp_business_account";
+  const url = GRAPH_BASE + "/" + encodeURIComponent(phoneNumberId) + "?fields=display_phone_number,verified_name";
 
   try {
     const response = await fetch(url, {
@@ -60,7 +60,6 @@ export async function verifyWhatsAppPhoneNumber(args: {
     const data = (await response.json()) as {
       display_phone_number?: string;
       verified_name?: string;
-      whatsapp_business_account?: { id?: string };
     };
 
     if (!data.display_phone_number) {
@@ -72,7 +71,7 @@ export async function verifyWhatsAppPhoneNumber(args: {
       data: {
         display_phone_number: data.display_phone_number,
         verified_name: data.verified_name ?? null,
-        whatsapp_business_account_id: data.whatsapp_business_account?.id ?? null,
+        whatsapp_business_account_id: null,
       },
     };
   } catch (e) {
