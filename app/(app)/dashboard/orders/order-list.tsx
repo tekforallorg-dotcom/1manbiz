@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
+
 import { formatNairaFromKobo } from "@/lib/format";
 
 type OrderRow = {
@@ -40,9 +43,10 @@ export function OrderList({ orders }: { orders: OrderRow[] }) {
       {orders.map((o) => {
         const customerName = o.customer?.name ?? "Unknown customer";
         const itemLabel = o.item_count === 1 ? "1 item" : o.item_count + " items";
+        const href = "/dashboard/orders/" + o.id;
         return (
           <li key={o.id}>
-            <article className="flex items-center gap-4 rounded-2xl bg-white p-4 ring-1 ring-black/[0.04] transition-all duration-200 hover:shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)] hover:ring-black/[0.08] sm:gap-5 sm:p-5">
+            <Link href={href} className="group flex items-center gap-4 rounded-2xl bg-white p-4 ring-1 ring-black/[0.04] transition-all duration-200 hover:shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)] hover:ring-black/[0.08] sm:gap-5 sm:p-5">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <p className="truncate font-medium text-foreground">{customerName}</p>
@@ -55,7 +59,8 @@ export function OrderList({ orders }: { orders: OrderRow[] }) {
               <div className="shrink-0 text-right">
                 <p className="text-sm font-medium tabular-nums text-foreground">{formatNairaFromKobo(o.subtotal_kobo)}</p>
               </div>
-            </article>
+              <ChevronRight size={16} strokeWidth={2} className="hidden shrink-0 text-text-muted transition-transform group-hover:translate-x-0.5 sm:block" />
+            </Link>
           </li>
         );
       })}

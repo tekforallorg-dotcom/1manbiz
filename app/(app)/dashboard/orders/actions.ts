@@ -40,10 +40,7 @@ export async function createOrderAction(
   const notes = String(formData.get("notes") ?? "").trim() || null;
 
   const fieldErrors: Record<string, string> = {};
-
-  if (!customerId) {
-    fieldErrors.customer_id = "Pick a customer";
-  }
+  if (!customerId) fieldErrors.customer_id = "Pick a customer";
 
   let submittedItems: SubmittedItem[] = [];
   try {
@@ -66,14 +63,9 @@ export async function createOrderAction(
   }
 
   if (Object.keys(fieldErrors).length > 0) {
-    return {
-      status: "error",
-      error: "Please fix the highlighted fields.",
-      fieldErrors,
-    };
+    return { status: "error", error: "Please fix the highlighted fields.", fieldErrors };
   }
 
-  // Verify customer belongs to this business
   const { data: customer } = await supabase
     .from("customers")
     .select("id")
@@ -82,14 +74,9 @@ export async function createOrderAction(
     .maybeSingle();
 
   if (!customer) {
-    return {
-      status: "error",
-      error: "Customer not found.",
-      fieldErrors: { customer_id: "Pick a valid customer" },
-    };
+    return { status: "error", error: "Customer not found.", fieldErrors: { customer_id: "Pick a valid customer" } };
   }
 
-  // Fetch authoritative product prices (don't trust client-submitted amounts)
   const productIds = submittedItems.map((it) => it.product_id);
   const { data: products, error: productsError } = await supabase
     .from("products")
@@ -103,17 +90,11 @@ export async function createOrderAction(
   }
 
   const productsById = new Map(products.map((p) => [p.id, p]));
-
-  const missingProducts = submittedItems.filter((it) => !productsById.has(it.product_id));
-  if (missingProducts.length > 0) {
-    return {
-      status: "error",
-      error: "Some products are no longer available.",
-      fieldErrors: { items: "Re-pick the unavailable items" },
-    };
+  const missing = submittedItems.filter((it) => !productsById.has(it.product_id));
+  if (missing.length > 0) {
+    return { status: "error", error: "Some products are no longer available.", fieldErrors: { items: "Re-pick the unavailable items" } };
   }
 
-  // Compute line totals + subtotal server-side
   let subtotalKobo = 0;
   const orderItemsToInsert: Array<{
     product_id: string;
@@ -137,7 +118,6 @@ export async function createOrderAction(
     });
   }
 
-  // Insert order
   const { data: orderRow, error: orderError } = await supabase
     .from("orders")
     .insert({
@@ -157,17 +137,73 @@ export async function createOrderAction(
     return { status: "error", error: "Could not create order: " + (orderError?.message ?? "unknown") };
   }
 
-  // Insert order_items
   const rowsWithOrderId = orderItemsToInsert.map((row) => ({ ...row, order_id: orderRow.id }));
   const { error: itemsInsertError } = await supabase.from("order_items").insert(rowsWithOrderId);
 
   if (itemsInsertError) {
     console.error("[orders] insert order_items failed", itemsInsertError);
-    // Roll back the order so we don't leave an orphan with subtotal but no items
     await supabase.from("orders").delete().eq("id", orderRow.id);
     return { status: "error", error: "Could not save order items: " + itemsInsertError.message };
   }
 
   revalidatePath("/dashboard/orders");
   redirect("/dashboard/orders");
+}
+
+export type OrderTransitionResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+async function transitionOrderStatus(orderId: string, nextStatus: "paid" | "cancelled"): Promise<OrderTransitionResult> {
+  const supabase = await createClient();
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Not signed in" };
+
+  const { data: business } = await supabase
+    .from("businesses")
+    .select("id")
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (!business) return { ok: false, error: "No business" };
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, status")
+    .eq("id", orderId)
+    .eq("business_id", business.id)
+    .maybeSingle();
+  if (!order) return { ok: false, error: "Order not found" };
+
+  if (order.status === nextStatus) return { ok: true };
+  if (order.status === "paid" && nextStatus === "cancelled") {
+    return { ok: false, error: "Cannot cancel a paid order. Refunds will be available in a later release." };
+  }
+  if (order.status === "cancelled" && nextStatus === "paid") {
+    return { ok: false, error: "Cannot mark a cancelled order as paid." };
+  }
+
+  const { error: updateError } = await supabase
+    .from("orders")
+    .update({ status: nextStatus })
+    .eq("id", orderId)
+    .eq("business_id", business.id);
+
+  if (updateError) {
+    console.error("[orders] transition failed", updateError);
+    return { ok: false, error: updateError.message };
+  }
+
+  revalidatePath("/dashboard/orders");
+  revalidatePath("/dashboard/orders/" + orderId);
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function markOrderPaidAction(orderId: string): Promise<OrderTransitionResult> {
+  return transitionOrderStatus(orderId, "paid");
+}
+
+export async function cancelOrderAction(orderId: string): Promise<OrderTransitionResult> {
+  return transitionOrderStatus(orderId, "cancelled");
 }
