@@ -41,8 +41,7 @@ export async function createProductAction(
   // Inputs
   const name = String(formData.get("name") ?? "").trim();
   const sku = String(formData.get("sku") ?? "").trim() || null;
-  const description =
-    String(formData.get("description") ?? "").trim() || null;
+  const description = String(formData.get("description") ?? "").trim() || null;
   const priceInput = String(formData.get("price_naira") ?? "").trim();
   const stockInput = String(formData.get("stock_quantity") ?? "0").trim();
   const imagePathRaw = String(formData.get("image_path") ?? "").trim();
