@@ -64,12 +64,14 @@ export function SiteNav() {
 
             <div className="hidden md:flex items-center gap-2">
               <Link
-                href="/login"
+                href="/sign-in"
                 className="text-[13.5px] font-medium text-text-secondary hover:text-foreground transition-colors px-3 py-2 rounded-full hover:bg-surface-muted"
               >
-                Log in
+                Sign in
               </Link>
-              <Button size="sm">Start free</Button>
+              <Link href="/sign-up">
+                <Button size="sm">Start free</Button>
+              </Link>
             </div>
 
             <button
@@ -133,16 +135,18 @@ export function SiteNav() {
               </Link>
             ))}
             <Link
-              href="/login"
+              href="/sign-in"
               className="px-3 py-3 text-[15px] font-medium text-foreground rounded-xl hover:bg-surface-muted transition-colors"
               onClick={() => setOpen(false)}
             >
-              Log in
+              Sign in
             </Link>
             <div className="mt-4 px-3">
-              <Button size="lg" className="w-full" onClick={() => setOpen(false)}>
-                Start free
-              </Button>
+              <Link href="/sign-up" onClick={() => setOpen(false)}>
+                <Button size="lg" className="w-full">
+                  Start free
+                </Button>
+              </Link>
             </div>
           </nav>
         </div>

@@ -78,13 +78,15 @@ export function SiteHero() {
               transition={{ duration: 0.85, ease, delay: 2 * stagger }}
               className="mt-8 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 sm:gap-4"
             >
-              <Button size="lg" className="w-full sm:w-auto group">
-                Start free
-                <ArrowRight
-                  className="ml-0.5 h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5"
-                  strokeWidth={2}
-                />
-              </Button>
+              <Link href="/sign-up" className="w-full sm:w-auto">
+                <Button size="lg" className="w-full sm:w-auto group">
+                  Start free
+                  <ArrowRight
+                    className="ml-0.5 h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5"
+                    strokeWidth={2}
+                  />
+                </Button>
+              </Link>
               <Link
                 href="#workflow"
                 className="text-[14px] font-medium text-text-secondary hover:text-foreground transition-colors px-2 py-2 inline-flex items-center gap-1"

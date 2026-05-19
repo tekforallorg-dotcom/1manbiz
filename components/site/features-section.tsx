@@ -103,8 +103,8 @@ const TABS: FeatureTab[] = [
 const ease = [0.16, 1, 0.3, 1] as const;
 
 export function FeaturesSection() {
-  const [activeId, setActiveId] = useState<string>(TABS[0].id);
-  const active = TABS.find((t) => t.id === activeId) ?? TABS[0];
+  const [activeId, setActiveId] = useState<string>(TABS[0]!.id);
+  const active = TABS.find((t) => t.id === activeId) ?? TABS[0]!;
 
   return (
     <section

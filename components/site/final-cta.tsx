@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
+import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -45,16 +46,18 @@ export function FinalCTA() {
             </p>
 
             <div className="mt-8 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-5">
-              <Button
-                size="lg"
-                className="bg-brand-primary hover:bg-brand-dark text-white group"
-              >
-                Start free
-                <ArrowRight
-                  className="ml-0.5 h-4 w-4 transition-transform group-hover:translate-x-0.5"
-                  strokeWidth={2}
-                />
-              </Button>
+              <Link href="/sign-up">
+                <Button
+                  size="lg"
+                  className="bg-brand-primary hover:bg-brand-dark text-white group"
+                >
+                  Start free
+                  <ArrowRight
+                    className="ml-0.5 h-4 w-4 transition-transform group-hover:translate-x-0.5"
+                    strokeWidth={2}
+                  />
+                </Button>
+              </Link>
               <span className="text-[13px] text-background/50">
                 No credit card &middot; Cancel any time
               </span>

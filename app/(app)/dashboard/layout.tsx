@@ -1,18 +1,21 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
-import Link from "next/link";
 import {
-  LogOut,
   Home,
+  LineChart,
+  LogOut,
+  MessageSquare,
+  Package,
+  Receipt,
+  Settings,
   ShoppingBag,
   Users,
-  Receipt,
-  LineChart,
-  Settings,
-  Package,
-  MessageSquare,
 } from "lucide-react";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+
 import { signOutAction } from "@/app/(auth)/actions";
+import { createClient } from "@/lib/supabase/server";
+
+import { MobileNav } from "./mobile-nav";
 
 const NAV_ITEMS = [
   { label: "Home", href: "/dashboard", icon: Home },
@@ -57,14 +60,16 @@ export default async function DashboardLayout({
     .limit(1)
     .maybeSingle();
 
+  const userName = profile.full_name ?? user.email ?? "Account";
+
   return (
-    <div className="min-h-screen flex bg-background">
+    <div className="flex min-h-screen bg-background">
       {/* Desktop sidebar */}
-      <aside className="hidden lg:flex w-60 flex-col bg-surface border-r border-border sticky top-0 h-screen">
+      <aside className="sticky top-0 hidden h-screen w-60 flex-col border-r border-border bg-surface lg:flex">
         <div className="px-6 py-5">
           <Link
             href="/dashboard"
-            className="inline-flex items-baseline font-bold tracking-[-0.02em] text-[20px]"
+            className="inline-flex items-baseline text-[20px] font-bold tracking-[-0.02em]"
           >
             <span className="text-foreground">1Man</span>
             <span className="text-brand-primary">.Biz</span>
@@ -72,24 +77,24 @@ export default async function DashboardLayout({
         </div>
 
         {business && (
-          <div className="px-6 pb-4 mb-2 border-b border-border">
-            <p className="text-[10.5px] uppercase tracking-[0.14em] font-semibold text-text-muted">
+          <div className="mb-2 border-b border-border px-6 pb-4">
+            <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-text-muted">
               Business
             </p>
-            <p className="mt-1 text-[14px] font-semibold text-foreground truncate">
+            <p className="mt-1 truncate text-[14px] font-semibold text-foreground">
               {business.name}
             </p>
           </div>
         )}
 
-        <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] font-medium text-text-secondary hover:bg-surface-muted hover:text-foreground transition-colors"
+                className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] font-medium text-text-secondary transition-colors hover:bg-surface-muted hover:text-foreground"
               >
                 <Icon className="h-4 w-4" strokeWidth={1.75} />
                 {item.label}
@@ -100,17 +105,17 @@ export default async function DashboardLayout({
 
         <div className="border-t border-border p-3">
           <div className="px-3 pb-3">
-            <p className="text-[10.5px] uppercase tracking-[0.14em] font-semibold text-text-muted">
+            <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-text-muted">
               Signed in as
             </p>
-            <p className="mt-1 text-[12.5px] font-medium text-foreground truncate">
-              {profile.full_name ?? user.email}
+            <p className="mt-1 truncate text-[12.5px] font-medium text-foreground">
+              {userName}
             </p>
           </div>
           <form action={signOutAction}>
             <button
               type="submit"
-              className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] font-medium text-text-secondary hover:bg-surface-muted hover:text-foreground transition-colors"
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] font-medium text-text-secondary transition-colors hover:bg-surface-muted hover:text-foreground"
             >
               <LogOut className="h-4 w-4" strokeWidth={1.75} />
               Sign out
@@ -119,27 +124,16 @@ export default async function DashboardLayout({
         </div>
       </aside>
 
-      {/* Mobile topbar */}
-      <header className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-surface border-b border-border flex items-center justify-between px-4 z-50">
-        <Link
-          href="/dashboard"
-          className="inline-flex items-baseline font-bold tracking-[-0.02em] text-[18px]"
-        >
-          <span className="text-foreground">1Man</span>
-          <span className="text-brand-primary">.Biz</span>
-        </Link>
-        <form action={signOutAction}>
-          <button type="submit" className="p-1.5" aria-label="Sign out">
-            <LogOut
-              className="h-5 w-5 text-text-secondary"
-              strokeWidth={1.75}
-            />
-          </button>
-        </form>
-      </header>
+      {/* Mobile topbar + drawer (single client component, flat sibling stacking) */}
+      <MobileNav
+        businessName={business?.name ?? null}
+        userName={userName}
+      />
 
-      {/* Main content */}
-      <main className="flex-1 pt-14 lg:pt-0 min-w-0">{children}</main>
+      {/* Main content ? pt-* only, no py-* shorthand */}
+      <main className="min-w-0 flex-1 px-4 pb-10 pt-20 sm:px-6 sm:pt-24 lg:px-10 lg:pb-12 lg:pt-12">
+        {children}
+      </main>
     </div>
   );
 }

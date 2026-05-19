@@ -36,7 +36,7 @@ export default async function DashboardHome() {
 
       <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card label="Channels connected" value={String(business?.channels?.length ?? 0)} />
-        <Card label="AI tone" value={(business?.ai_tone ?? "friendly").replace(/^./, (c) => c.toUpperCase())} />
+        <Card label="AI tone" value={(business?.ai_tone ?? "friendly").replace(/^./, (c: string) => c.toUpperCase())} />
         <Card label="Setup status" value="Complete" tone="brand" />
       </div>
 
