@@ -6,6 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { UserPlus } from "lucide-react-native";
 import { listCustomers, createCustomer, type Customer } from "../lib/customers";
 import { PickerSearchBar } from "./picker-search-bar";
+import { colors as designColors } from "@1manbiz/design";
 
 interface Props {
   visible: boolean;
@@ -91,13 +92,12 @@ export function CustomerPicker({ visible, businessId, onSelect, onClose }: Props
             <Pressable
               onPress={handleCreate}
               disabled={saving}
-              style={{ backgroundColor: "#00D26A" }}
-              className="rounded-2xl py-4 items-center active:opacity-80 mt-6"
+              className="bg-primary rounded-2xl py-4 items-center active:opacity-80 mt-6"
             >
               {saving ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <Text style={{ color: "#FFFFFF" }} className="text-base font-semibold">
+                <Text className="text-white text-base font-semibold">
                   Add customer
                 </Text>
               )}
@@ -119,7 +119,7 @@ export function CustomerPicker({ visible, businessId, onSelect, onClose }: Props
                 className="flex-row items-center bg-white border border-gray-200 rounded-2xl p-4 mb-3 active:opacity-60"
               >
                 <View className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-3">
-                  <UserPlus size={20} color="#00D26A" />
+                  <UserPlus size={20} color={designColors.primary} />
                 </View>
                 <Text className="text-text text-base font-semibold">New customer</Text>
               </Pressable>

@@ -70,7 +70,7 @@ export function ProductPicker({ visible, businessId, initialSelection, onDone, o
           </Pressable>
           <Text className="text-text text-base font-semibold">Select items</Text>
           <Pressable onPress={handleDone} hitSlop={12}>
-            <Text style={{ color: "#00D26A" }} className="text-base font-semibold">
+            <Text className="text-primary text-base font-semibold">
               {totalSelected > 0 ? `Done (${totalSelected})` : "Done"}
             </Text>
           </Pressable>

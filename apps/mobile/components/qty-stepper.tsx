@@ -1,5 +1,6 @@
 import { View, Text, Pressable } from "react-native";
 import { Minus, Plus } from "lucide-react-native";
+import { colors as designColors } from "@1manbiz/design";
 
 interface Props {
   value: number;
@@ -23,7 +24,7 @@ export function QtyStepper({ value, onChange, min = 1, max = 999 }: Props) {
         className="w-7 h-7 items-center justify-center active:opacity-50"
         style={{ opacity: atMin ? 0.35 : 1 }}
       >
-        <Minus size={16} color="#0F172A" />
+        <Minus size={16} color={designColors.text} />
       </Pressable>
       <Text className="text-text text-base font-semibold w-7 text-center">{value}</Text>
       <Pressable
@@ -32,7 +33,7 @@ export function QtyStepper({ value, onChange, min = 1, max = 999 }: Props) {
         className="w-7 h-7 items-center justify-center active:opacity-50"
         style={{ opacity: atMax ? 0.35 : 1 }}
       >
-        <Plus size={16} color="#0F172A" />
+        <Plus size={16} color={designColors.text} />
       </Pressable>
     </View>
   );

@@ -1,12 +1,12 @@
 import { Tabs } from "expo-router";
 import { House, MessageCircle, Receipt, Package, Settings as SettingsIcon } from "lucide-react-native";
+import { colors as designColors } from "@1manbiz/design";
 
-// TODO(DESIGN-1): replace hardcoded hex with imports from @1manbiz/design
 const COLORS = {
-  active: "#00D26A",
-  inactive: "#9CA3AF",
-  background: "#FFFFFF",
-  border: "#E5E7EB",
+  active: designColors.primary,
+  inactive: "#9CA3AF",  // gray-400 — no exact token match, leave for now
+  background: designColors.background,
+  border: designColors.border,
 };
 
 export default function TabsLayout() {

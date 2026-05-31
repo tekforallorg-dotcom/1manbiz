@@ -20,6 +20,7 @@ import {
   ProductPicker,
   type SelectedQtyMap,
 } from "../../../components/product-picker";
+import { colors as designColors } from "@1manbiz/design";
 
 interface CartItem extends NewOrderLine {
   // Augmented from the picker so we can rerender without refetching products.
@@ -138,7 +139,7 @@ export default function NewOrderScreen() {
               <Text className="text-text text-base font-semibold">{customer.name}</Text>
               <Text className="text-textMuted text-sm mt-0.5">+{customer.phone_e164}</Text>
             </View>
-            <Text style={{ color: "#00D26A" }} className="text-sm font-medium">Change</Text>
+            <Text className="text-primary text-sm font-medium">Change</Text>
           </Pressable>
         ) : (
           <Pressable
@@ -146,7 +147,7 @@ export default function NewOrderScreen() {
             className="mt-2 bg-white border border-gray-200 rounded-2xl p-4 flex-row items-center active:opacity-60"
           >
             <View className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-3">
-              <UserPlus size={20} color="#00D26A" />
+              <UserPlus size={20} color={designColors.primary} />
             </View>
             <Text className="text-text text-base font-medium">Select customer</Text>
           </Pressable>
@@ -160,7 +161,7 @@ export default function NewOrderScreen() {
             className="mt-2 bg-white border border-gray-200 rounded-2xl p-4 flex-row items-center active:opacity-60"
           >
             <View className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-3">
-              <Plus size={20} color="#00D26A" />
+              <Plus size={20} color={designColors.primary} />
             </View>
             <Text className="text-text text-base font-medium">Add items</Text>
           </Pressable>
@@ -197,8 +198,8 @@ export default function NewOrderScreen() {
               onPress={() => setShowProductPicker(true)}
               className="border-t border-gray-100 py-3 flex-row items-center active:opacity-60"
             >
-              <Plus size={18} color="#00D26A" />
-              <Text style={{ color: "#00D26A" }} className="text-sm font-medium ml-2">
+              <Plus size={18} color={designColors.primary} />
+              <Text className="text-primary text-sm font-medium ml-2">
                 Edit items
               </Text>
             </Pressable>
@@ -229,13 +230,12 @@ export default function NewOrderScreen() {
         <Pressable
           onPress={handleSave}
           disabled={!canSave}
-          style={{ backgroundColor: canSave ? "#00D26A" : "#D1D5DB" }}
-          className="rounded-2xl py-4 items-center active:opacity-80"
+          className={"rounded-2xl py-4 items-center active:opacity-80 " + (canSave ? "bg-primary" : "bg-borderStrong")}
         >
           {saving ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
-            <Text style={{ color: "#FFFFFF" }} className="text-base font-semibold">
+            <Text className="text-white text-base font-semibold">
               Save order
             </Text>
           )}

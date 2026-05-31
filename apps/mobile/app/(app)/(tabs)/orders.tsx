@@ -66,8 +66,7 @@ export default function OrdersScreen() {
         </View>
         <Pressable
           onPress={() => router.push("/orders/new")}
-          style={{ backgroundColor: "#00D26A" }}
-          className="w-11 h-11 rounded-full items-center justify-center active:opacity-80"
+          className="bg-primary w-11 h-11 rounded-full items-center justify-center active:opacity-80"
           hitSlop={8}
         >
           <Plus size={22} color="#FFFFFF" />

@@ -16,6 +16,19 @@ export const colors = {
   surfaceMuted: "#F4F7F5",
   textMuted: "#6B6B6B",
   textSecondary: "#3A3A3A",
+  // Flat aliases for mobile NativeWind classNames (added by MOB-DESIGN-1).
+  // Web continues to use brand.* and foreground via Tailwind v4 CSS config.
+  primary: "#00D26A",
+  primarySoft: "#F0FCF7",
+  text: "#0A0A0A",
+  border: "#E5E7EB",
+  borderStrong: "#D1D5DB",
+  danger: "#DC2626",
+  dangerSoft: "#FEE2E2",
+  warn: "#D97706",
+  warnSoft: "#FEF3C7",
+  success: "#16A34A",
+  successSoft: "#F0FCF7",
 } as const;
 
 export const typography = {

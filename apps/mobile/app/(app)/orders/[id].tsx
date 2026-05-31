@@ -14,6 +14,7 @@ import {
 import { formatNaira, formatDateTime } from "../../../lib/format";
 import { ScreenHeader } from "../../../components/screen-header";
 import { LineItemRow } from "../../../components/line-item-row";
+import { colors as designColors } from "@1manbiz/design";
 
 const SOURCE_LABEL: Record<OrderSource, string> = {
   manual: "Captured manually",
@@ -204,13 +205,12 @@ export default function OrderDetailScreen() {
           <Pressable
             onPress={handleMarkPaid}
             disabled={marking}
-            style={{ backgroundColor: "#00D26A" }}
-            className="rounded-2xl py-4 items-center active:opacity-80"
+            className="bg-primary rounded-2xl py-4 items-center active:opacity-80"
           >
             {marking ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={{ color: "#FFFFFF" }} className="text-base font-semibold">
+              <Text className="text-white text-base font-semibold">
                 Mark as paid
               </Text>
             )}
@@ -221,7 +221,7 @@ export default function OrderDetailScreen() {
             className="bg-white border border-gray-200 rounded-2xl py-4 items-center active:opacity-60 flex-row justify-center"
           >
             <Text className="text-text text-base font-semibold mr-2">View receipt</Text>
-            <ExternalLink size={18} color="#0F172A" />
+            <ExternalLink size={18} color={designColors.text} />
           </Pressable>
         ) : null}
       </View>

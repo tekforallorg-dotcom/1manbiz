@@ -26,15 +26,13 @@ export function StatusFilter<T extends string>({ options, value, onChange }: Pro
           <Pressable
             key={opt.value}
             onPress={() => onChange(opt.value)}
-            style={active ? { backgroundColor: "#00D26A" } : undefined}
             className={
               "px-4 py-2 rounded-full active:opacity-70 " +
-              (active ? "" : "bg-gray-100")
+              (active ? "bg-primary" : "bg-gray-100")
             }
           >
             <Text
-              style={active ? { color: "#FFFFFF" } : undefined}
-              className={"text-sm font-medium " + (active ? "" : "text-text")}
+              className={"text-sm font-medium " + (active ? "text-white" : "text-text")}
             >
               {opt.label}
             </Text>

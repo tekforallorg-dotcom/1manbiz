@@ -1,6 +1,7 @@
 import { View, Text, Pressable } from "react-native";
 import { ChevronLeft } from "lucide-react-native";
 import { useRouter } from "expo-router";
+import { colors as designColors } from "@1manbiz/design";
 
 interface Props {
   title: string;
@@ -25,7 +26,7 @@ export function ScreenHeader({ title, onBack }: Props) {
         hitSlop={12}
         className="w-10 h-10 items-center justify-center active:opacity-60"
       >
-        <ChevronLeft size={28} color="#0F172A" />
+        <ChevronLeft size={28} color={designColors.text} />
       </Pressable>
       <Text className="text-text text-xl font-semibold ml-1">{title}</Text>
     </View>
