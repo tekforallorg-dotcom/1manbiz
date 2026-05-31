@@ -42,3 +42,16 @@ coverage/
 
 # Vercel
 .vercel
+
+# Monorepo additions
+.pnpm-store/
+apps/*/node_modules/
+apps/*/.next/
+apps/*/dist/
+apps/*/build/
+apps/*/.expo/
+apps/*/ios/
+apps/*/android/
+packages/*/dist/
+packages/*/node_modules/
+pnpm-debug.log*
