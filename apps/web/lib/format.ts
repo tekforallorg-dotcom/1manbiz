@@ -44,3 +44,32 @@ export function parseNairaInputToKobo(input: string): number {
   if (Number.isNaN(naira) || naira < 0) return 0;
   return Math.round(naira * 100);
 }
+
+/**
+ * Compact relative time for inbox list view.
+ * Under a minute => "just now"; under an hour => "Nm"; under a day => "Nh";
+ * yesterday => "Yesterday"; same year => "Mar 5"; older => "Mar 5, 2024".
+ */
+export function relativeTimeShort(iso: string): string {
+  const then = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - then.getTime();
+  const min = Math.floor(diffMs / 60000);
+
+  if (min < 1) return "just now";
+  if (min < 60) return min + "m";
+  const hr = Math.floor(min / 60);
+  if (hr < 24 && then.toDateString() === now.toDateString()) return hr + "h";
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (then.toDateString() === yesterday.toDateString()) return "Yesterday";
+
+  const sameYear = then.getFullYear() === now.getFullYear();
+  return then.toLocaleDateString("en-NG", {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+}
+

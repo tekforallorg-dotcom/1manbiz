@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { createAdminClient } from "@/lib/supabase/admin";
+import { previewFromIncoming } from "@/lib/conversations";
+
 /**
- * WhatsApp webhook endpoint.
+ * WhatsApp Cloud API webhook.
  *
- *   GET  -> Meta verification challenge (compare hub.verify_token against
- *           the WHATSAPP_WEBHOOK_VERIFY_TOKEN env var, echo hub.challenge).
- *   POST -> Receive a webhook event. For slice 3G.A we just log the payload
- *           and return 200 immediately (Meta requires fast ack). Parsing
- *           into conversations + messages tables ships in 3G.B.
+ *   GET  -> Meta verification challenge.
+ *   POST -> Receive webhook events. Parses entry[].changes[].value:
+ *           - messages[]: inbound customer messages -> upsert customer +
+ *             conversation, insert message row, bump unread.
+ *           - statuses[]: delivery/read receipts -> update message status.
  *
- * Signature validation (HMAC-SHA256 of body using WHATSAPP_APP_SECRET) is
- * implemented but currently warns-only — set to enforce in 3G.B once we
- * have logs to debug any mismatch.
+ * Signature validation: HMAC-SHA256 of raw body using WHATSAPP_APP_SECRET.
+ *   - Enforced when APP_SECRET is set.
+ *   - Skipped (with warning) when not set, for local dev / ngrok.
+ *
+ * All DB writes use the service-role client to bypass RLS, since the caller
+ * is Meta, not an authenticated user.
  */
 
 export const dynamic = "force-dynamic";
@@ -19,6 +25,9 @@ export const dynamic = "force-dynamic";
 const VERIFY_TOKEN = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
 const APP_SECRET = process.env.WHATSAPP_APP_SECRET;
 
+// --------------------------------------------------------------------------
+// GET verification
+// --------------------------------------------------------------------------
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const mode = searchParams.get("hub.mode");
@@ -42,9 +51,12 @@ export async function GET(request: NextRequest) {
   return new NextResponse("Forbidden", { status: 403 });
 }
 
+// --------------------------------------------------------------------------
+// Signature
+// --------------------------------------------------------------------------
 async function verifySignature(rawBody: string, signatureHeader: string | null): Promise<boolean> {
   if (!APP_SECRET) {
-    console.warn("[whatsapp-webhook] WHATSAPP_APP_SECRET not set; skipping signature check");
+    // Dev mode (no secret configured) — allow but warn.
     return true;
   }
   if (!signatureHeader) return false;
@@ -56,7 +68,7 @@ async function verifySignature(rawBody: string, signatureHeader: string | null):
     encoder.encode(APP_SECRET),
     { name: "HMAC", hash: "SHA-256" },
     false,
-    ["sign"]
+    ["sign"],
   );
   const signature = await crypto.subtle.sign("HMAC", keyMaterial, encoder.encode(rawBody));
   const hex = Array.from(new Uint8Array(signature))
@@ -66,20 +78,245 @@ async function verifySignature(rawBody: string, signatureHeader: string | null):
   return hex === expected;
 }
 
+// --------------------------------------------------------------------------
+// Types (loose — Meta payload is wide and we only read a subset)
+// --------------------------------------------------------------------------
+interface WhatsAppPayload {
+  object?: string;
+  entry?: Array<{
+    id?: string;
+    changes?: Array<{
+      field?: string;
+      value?: {
+        messaging_product?: string;
+        metadata?: { display_phone_number?: string; phone_number_id?: string };
+        contacts?: Array<{ profile?: { name?: string }; wa_id?: string }>;
+        messages?: Array<{
+          from?: string;
+          id?: string;
+          timestamp?: string;
+          type?: string;
+          text?: { body?: string };
+          image?: { id?: string; caption?: string; mime_type?: string };
+          video?: { id?: string; caption?: string };
+          audio?: { id?: string };
+          document?: { id?: string; filename?: string };
+        }>;
+        statuses?: Array<{
+          id?: string;
+          status?: string;
+          timestamp?: string;
+          recipient_id?: string;
+        }>;
+      };
+    }>;
+  }>;
+}
+
+// --------------------------------------------------------------------------
+// POST handler
+// --------------------------------------------------------------------------
 export async function POST(request: NextRequest) {
   const rawBody = await request.text();
   const signatureHeader = request.headers.get("x-hub-signature-256");
 
   const valid = await verifySignature(rawBody, signatureHeader);
   if (!valid) {
-    console.warn("[whatsapp-webhook] signature mismatch (allowing in 3G.A; will enforce in 3G.B)");
+    console.warn("[whatsapp-webhook] signature mismatch — rejecting");
+    return new NextResponse("Forbidden", { status: 401 });
+  }
+  if (!APP_SECRET) {
+    console.warn("[whatsapp-webhook] WHATSAPP_APP_SECRET not set — signature check skipped");
   }
 
+  let payload: WhatsAppPayload;
   try {
-    const payload = JSON.parse(rawBody);
-    console.log("[whatsapp-webhook] payload", JSON.stringify(payload).slice(0, 2000));
+    payload = JSON.parse(rawBody);
   } catch {
-    console.warn("[whatsapp-webhook] non-JSON body", rawBody.slice(0, 500));
+    console.warn("[whatsapp-webhook] non-JSON body", rawBody.slice(0, 200));
+    return NextResponse.json({ ok: true });
+  }
+
+  const admin = createAdminClient();
+
+  for (const entry of payload.entry ?? []) {
+    for (const change of entry.changes ?? []) {
+      const value = change.value;
+      if (!value) continue;
+
+      const phoneNumberId = value.metadata?.phone_number_id;
+      if (!phoneNumberId) {
+        console.warn("[whatsapp-webhook] change without phone_number_id, skipping");
+        continue;
+      }
+
+      // Resolve channel_account -> business_id.
+      const { data: channelAccount, error: channelErr } = await admin
+        .from("channel_accounts")
+        .select("id, business_id")
+        .eq("meta_phone_number_id", phoneNumberId)
+        .maybeSingle();
+
+      if (channelErr) {
+        console.error("[whatsapp-webhook] channel lookup failed", channelErr);
+        continue;
+      }
+      if (!channelAccount) {
+        console.warn("[whatsapp-webhook] no channel_account for phone_number_id", phoneNumberId);
+        continue;
+      }
+
+      const businessId: string = channelAccount.business_id;
+      const channelAccountId: string = channelAccount.id;
+
+      // ----- Inbound messages -----
+      const contactsByWaId = new Map<string, { name?: string }>();
+      for (const c of value.contacts ?? []) {
+        if (c.wa_id) contactsByWaId.set(c.wa_id, { name: c.profile?.name });
+      }
+
+      for (const message of value.messages ?? []) {
+        const waId = message.from;
+        if (!waId || !message.id) continue;
+
+        // WhatsApp wa_id is E.164 without "+". Normalise.
+        const phoneE164 = waId.startsWith("+") ? waId : "+" + waId;
+        const contactName = contactsByWaId.get(waId)?.name ?? null;
+
+        // 1) Find or create customer for this business + phone.
+        const { data: existingCustomer, error: custLookupErr } = await admin
+          .from("customers")
+          .select("id, name")
+          .eq("business_id", businessId)
+          .eq("phone_e164", phoneE164)
+          .maybeSingle();
+
+        if (custLookupErr) {
+          console.error("[whatsapp-webhook] customer lookup failed", custLookupErr);
+          continue;
+        }
+
+        let customerId: string;
+        if (existingCustomer) {
+          customerId = existingCustomer.id;
+          // Backfill name from WA profile if customer record has none.
+          if (!existingCustomer.name && contactName) {
+            await admin
+              .from("customers")
+              .update({ name: contactName })
+              .eq("id", customerId);
+          }
+        } else {
+          const { data: newCustomer, error: custInsertErr } = await admin
+            .from("customers")
+            .insert({
+              business_id: businessId,
+              name: contactName,
+              phone_e164: phoneE164,
+            })
+            .select("id")
+            .single();
+          if (custInsertErr || !newCustomer) {
+            console.error("[whatsapp-webhook] customer insert failed", custInsertErr);
+            continue;
+          }
+          customerId = newCustomer.id;
+        }
+
+        // 2) Upsert conversation (business_id, customer_id) unique.
+        const preview = previewFromIncoming(message);
+        const sentAt = message.timestamp
+          ? new Date(Number(message.timestamp) * 1000).toISOString()
+          : new Date().toISOString();
+
+        const { data: existingConvo, error: convoLookupErr } = await admin
+          .from("conversations")
+          .select("id, unread_count")
+          .eq("business_id", businessId)
+          .eq("customer_id", customerId)
+          .maybeSingle();
+
+        if (convoLookupErr) {
+          console.error("[whatsapp-webhook] convo lookup failed", convoLookupErr);
+          continue;
+        }
+
+        let conversationId: string;
+        if (existingConvo) {
+          conversationId = existingConvo.id;
+          await admin
+            .from("conversations")
+            .update({
+              last_message_at: sentAt,
+              last_message_preview: preview,
+              last_message_direction: "in",
+              unread_count: (existingConvo.unread_count ?? 0) + 1,
+              channel_account_id: channelAccountId,
+            })
+            .eq("id", conversationId);
+        } else {
+          const { data: newConvo, error: convoInsertErr } = await admin
+            .from("conversations")
+            .insert({
+              business_id: businessId,
+              channel: "whatsapp",
+              channel_account_id: channelAccountId,
+              customer_id: customerId,
+              contact_phone_e164: phoneE164,
+              last_message_at: sentAt,
+              last_message_preview: preview,
+              last_message_direction: "in",
+              unread_count: 1,
+              status: "open",
+            })
+            .select("id")
+            .single();
+          if (convoInsertErr || !newConvo) {
+            console.error("[whatsapp-webhook] convo insert failed", convoInsertErr);
+            continue;
+          }
+          conversationId = newConvo.id;
+        }
+
+        // 3) Insert message row (idempotent via meta_message_id UNIQUE).
+        const bodyText = message.type === "text"
+          ? (message.text?.body ?? null)
+          : (message.image?.caption ?? message.video?.caption ?? null);
+
+        const mediaType = ["image", "video", "audio", "document", "sticker"].includes(message.type ?? "")
+          ? message.type ?? null
+          : null;
+
+        const { error: msgInsertErr } = await admin
+          .from("messages")
+          .insert({
+            conversation_id: conversationId,
+            direction: "in",
+            sender_role: "customer",
+            body_text: bodyText,
+            media_url: null, // Meta media requires a separate fetch with token; deferred.
+            media_type: mediaType,
+            sent_at: sentAt,
+            meta_message_id: message.id,
+          });
+
+        if (msgInsertErr) {
+          // Duplicate wamid => idempotent replay; ignore. Other errors logged.
+          if (!String(msgInsertErr.message).includes("duplicate key")) {
+            console.error("[whatsapp-webhook] message insert failed", msgInsertErr);
+          }
+        }
+      }
+
+      // ----- Status updates -----
+      for (const status of value.statuses ?? []) {
+        if (!status.id || !status.status) continue;
+        await admin
+          .from("messages")
+          .update({ meta_status: status.status })
+          .eq("meta_message_id", status.id);
+      }
+    }
   }
 
   return NextResponse.json({ ok: true });

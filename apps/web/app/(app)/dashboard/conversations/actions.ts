@@ -1,4 +1,5 @@
 "use server";
+import { markConversationRead } from "@/lib/conversations";
 
 import { revalidatePath } from "next/cache";
 
@@ -97,4 +98,25 @@ export async function connectWhatsAppAction(
 
   revalidatePath("/dashboard/conversations");
   return { status: "success", error: null };
+}
+
+/**
+ * Server action: zero unread badge for a conversation. Safe to call from
+ * client components after rendering a thread.
+ */
+export async function markConversationReadAction(conversationId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in" };
+
+  const { data: business } = await supabase
+    .from("businesses")
+    .select("id")
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (!business) return { error: "No business" };
+
+  await markConversationRead(supabase, conversationId, business.id);
+  revalidatePath("/dashboard/conversations");
+  return { ok: true };
 }
