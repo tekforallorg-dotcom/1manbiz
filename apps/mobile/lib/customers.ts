@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { normalizePhoneE164 } from "./phone";
 
 export interface Customer {
   id: string;
@@ -26,26 +27,20 @@ export async function listCustomers(businessId: string): Promise<Customer[]> {
   return data as Customer[];
 }
 
-// MVP normalisation: strip everything that is not a digit. Future polish:
-// proper E.164 with country-code prompting (Nigerian default 234).
-function normalizePhone(raw: string): string {
-  return raw.replace(/\D/g, "");
-}
-
 export async function createCustomer(
   businessId: string,
   name: string,
   phoneRaw: string,
 ): Promise<{ customer?: Customer; error?: string }> {
   const trimmedName = name.trim();
-  const phone = normalizePhone(phoneRaw);
+  const phoneE164 = normalizePhoneE164(phoneRaw, "NG");
 
   if (!trimmedName) return { error: "Please enter a name." };
-  if (phone.length < 7) return { error: "Please enter a valid phone number." };
+  if (!phoneE164) return { error: "Please enter a valid phone number." };
 
   const { data, error } = await supabase
     .from("customers")
-    .insert({ business_id: businessId, name: trimmedName, phone_e164: phone })
+    .insert({ business_id: businessId, name: trimmedName, phone_e164: phoneE164 })
     .select("id, name, phone_e164, email, last_purchase_at")
     .single();
 

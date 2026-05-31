@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { previewFromIncoming } from "@/lib/conversations";
+import { normalizePhoneE164 } from "@/lib/phone";
 
 /**
  * WhatsApp Cloud API webhook.
@@ -179,8 +180,13 @@ export async function POST(request: NextRequest) {
         const waId = message.from;
         if (!waId || !message.id) continue;
 
-        // WhatsApp wa_id is E.164 without "+". Normalise.
-        const phoneE164 = waId.startsWith("+") ? waId : "+" + waId;
+        // wa_id from Meta is digits-only E.164 (no leading +). Run through the
+        // shared normaliser so this stays robust to any malformed inputs.
+        const phoneE164 = normalizePhoneE164(waId, "NG");
+        if (!phoneE164) {
+          console.warn("[whatsapp-webhook] could not normalise wa_id, skipping", waId);
+          continue;
+        }
         const contactName = contactsByWaId.get(waId)?.name ?? null;
 
         // 1) Find or create customer for this business + phone.

@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import { MessageBubble } from "@/components/message-bubble";
+import { ReplyComposer } from "@/components/reply-composer";
 import {
   getConversationHeader,
   getMessages,
@@ -74,9 +75,7 @@ export default async function ConversationThreadPage({ params }: PageProps) {
         )}
       </div>
 
-      <p className="text-center text-xs text-text-muted">
-        Replying from the dashboard ships in the next slice.
-      </p>
+      <ReplyComposer conversationId={id} />
     </div>
   );
 }
