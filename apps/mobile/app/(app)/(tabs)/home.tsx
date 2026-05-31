@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { View, Text, ScrollView, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useSession } from "../../../lib/session";
 import { supabase } from "../../../lib/supabase";
 import { firstNameFrom } from "../../../lib/profile";
@@ -13,6 +13,7 @@ import { DashboardTile } from "../../../components/dashboard-tile";
 import { OrderRow } from "../../../components/order-row";
 
 export default function HomeScreen() {
+  const router = useRouter();
   const { session } = useSession();
   const userId = session?.user?.id;
   const userEmail = session?.user?.email;
@@ -136,7 +137,11 @@ export default function HomeScreen() {
           ) : (
             <View className="gap-2">
               {summary?.recentOrders.map((order) => (
-                <OrderRow key={order.id} order={order} />
+                <OrderRow
+                  key={order.id}
+                  order={order}
+                  onPress={() => router.push(`/orders/${order.id}`)}
+                />
               ))}
             </View>
           )}

@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { View, Text, ScrollView, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useSession } from "../../../lib/session";
 import { getActiveBusinessId } from "../../../lib/business";
 import { fetchOrders, type OrderFilter } from "../../../lib/orders";
@@ -20,6 +20,7 @@ export default function OrdersScreen() {
   const { session } = useSession();
   const userId = session?.user?.id;
 
+  const router = useRouter();
   const [filter, setFilter] = useState<OrderFilter>("all");
   const [orders, setOrders] = useState<RecentOrder[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,7 +87,7 @@ export default function OrdersScreen() {
               <OrderRow
                 key={order.id}
                 order={order}
-                onPress={() => console.log("[orders] tap order", order.id)}
+                onPress={() => router.push(`/orders/${order.id}`)}
               />
             ))}
           </View>
