@@ -60,8 +60,11 @@ export default function ConversationThreadScreen() {
         setMessages(m);
 
         await markConversationRead(id, businessId);
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message ?? "Failed to load");
+      } catch (e) {
+        if (!cancelled) {
+          const msg = e instanceof Error ? e.message : "Failed to load";
+          setError(msg);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }

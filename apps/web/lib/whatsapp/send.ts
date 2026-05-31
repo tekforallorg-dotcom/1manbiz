@@ -11,6 +11,11 @@
 
 const META_GRAPH_VERSION = "v22.0";
 
+type MetaTextResponse = {
+  messages?: Array<{ id?: string }>;
+  error?: { message?: string };
+};
+
 export type SendResult =
   | { ok: true; wamid: string }
   | { ok: false; error: string; status?: number };
@@ -43,12 +48,13 @@ export async function sendWhatsAppText(params: {
         text: { body, preview_url: false },
       }),
     });
-  } catch (e: any) {
+  } catch (e) {
     console.error("[whatsapp/send] network error", e);
-    return { ok: false, error: e?.message ?? "Network error" };
+    const msg = e instanceof Error ? e.message : "Network error";
+    return { ok: false, error: msg };
   }
 
-  let json: any = null;
+  let json: MetaTextResponse | null = null;
   try {
     json = await res.json();
   } catch {

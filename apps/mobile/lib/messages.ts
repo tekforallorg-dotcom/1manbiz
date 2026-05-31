@@ -3,6 +3,13 @@ import type { MessageRow } from "./conversations";
 
 const API_BASE = "https://1manbiz.vercel.app"; // TODO: move to EXPO_PUBLIC_API_BASE_URL.
 
+type SendApiResponse = {
+  ok?: boolean;
+  message?: MessageRow;
+  error?: string;
+  warning?: string;
+};
+
 export type SendReplyResult =
   | { ok: true; message: MessageRow }
   | { ok: false; error: string };
@@ -26,11 +33,12 @@ export async function sendReply(
       },
       body: JSON.stringify({ conversationId, body }),
     });
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? "Network error" };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Network error";
+    return { ok: false, error: msg };
   }
 
-  let json: any = null;
+  let json: SendApiResponse | null = null;
   try {
     json = await res.json();
   } catch {

@@ -35,8 +35,9 @@ export function ReplyComposer({ conversationId }: Props) {
       }
       setBody("");
       router.refresh();
-    } catch (e: any) {
-      setError(e?.message ?? "Network error");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Network error";
+      setError(msg);
     } finally {
       setSending(false);
     }
