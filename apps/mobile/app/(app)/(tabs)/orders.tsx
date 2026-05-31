@@ -2,6 +2,8 @@ import { useCallback, useState } from "react";
 import { View, Text, ScrollView, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
+import { Plus } from "lucide-react-native";
+import { Pressable } from "react-native";
 import { useSession } from "../../../lib/session";
 import { getActiveBusinessId } from "../../../lib/business";
 import { fetchOrders, type OrderFilter } from "../../../lib/orders";
@@ -57,9 +59,19 @@ export default function OrdersScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["top"]}>
-      <View className="px-6 pt-4 pb-3">
-        <Text className="text-text text-3xl font-bold">Orders</Text>
-        <Text className="text-textMuted text-base mt-1">Capture and track sales</Text>
+      <View className="px-6 pt-4 pb-3 flex-row items-start justify-between">
+        <View className="flex-1">
+          <Text className="text-text text-3xl font-bold">Orders</Text>
+          <Text className="text-textMuted text-base mt-1">Capture and track sales</Text>
+        </View>
+        <Pressable
+          onPress={() => router.push("/orders/new")}
+          style={{ backgroundColor: "#00D26A" }}
+          className="w-11 h-11 rounded-full items-center justify-center active:opacity-80"
+          hitSlop={8}
+        >
+          <Plus size={22} color="#FFFFFF" />
+        </Pressable>
       </View>
 
       <View className="pb-3">
