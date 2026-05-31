@@ -72,6 +72,7 @@ The owner works as Staff+ Engineer / 30-year architect. Every change follows thi
 ### Backend
 
 - **Supabase project**: `lcffhrbadhjnyyzivoys` — name "1ManBiz", region eu-west-3, free tier.
+- **Supabase organization ID**: `rdkucesroxvpqkwkooqz`.
 - **Auth**: email + password. Site URL `https://1manbiz.vercel.app`. Redirect URLs include `localhost:3000/**` and preview wildcard.
 - **Storage buckets**: `product-images`, `business-logos`.
 - **RLS**: enforced on every user-data table. Helper functions in `private` schema: `is_business_member(uuid)`, `is_business_owner(uuid)`.
@@ -80,6 +81,7 @@ The owner works as Staff+ Engineer / 30-year architect. Every change follows thi
 
 - **GitHub**: `github.com/tekforallorg-dotcom/1manbiz` — main branch, solo dev (no PRs, direct push to main is OK).
 - **Vercel**: project `1manbiz` under team `tekforallorg-dotcoms-projects`. Root Directory set to `apps/web`. Include files outside root: **ON**.
+- **Vercel IDs**: team `team_wH4R7DRuBcsRingXjOjXBZQR`, project `prj_EeyXQS3kesmdQ7IlSVPPlXhinPff`.
 - **Production URL**: `https://1manbiz.vercel.app`.
 - **Auto-deploy**: every push to `main` → ~2 min build → production.
 
@@ -151,6 +153,19 @@ Run before every checkpoint. Print ✅/⚠️ per item with one-line notes.
 - Subject in imperative mood, lowercase except proper nouns, no trailing period.
 - One feature = one commit. One slice = one commit. Migrations as separate commits from app code.
 
+### Mobile workspace conventions (added by MOB-1)
+
+- pnpm uses `shamefully-hoist=true` at the root (.npmrc). Required because Expo + Metro and expo-cli need every transitive dep visible at the workspace root node_modules; pnpm's default isolated layout breaks Metro resolution for Expo's peer graph (whatwg-fetch, ora, @react-navigation, semver sub-paths, etc.).
+- Do NOT use `node-linker=hoisted`. It breaks Vercel CI: hoisted layout eliminates apps/web/node_modules/next/ entirely, but Vercel's bin shim for next hardcodes apps/web/node_modules/next/dist/bin/next, causing MODULE_NOT_FOUND. See deviation log entry 13.
+- Root `package.json` carries `pnpm.overrides` pinning `react` and `react-dom` to `19.1.0`. Matches mobile's `expo install --fix` SDK 54 peg. Web tolerates via its `^19.0.0` range. Do not bump without coordinating with mobile SDK pin.
+- For any `expo-*` or `@expo/*` package, ALWAYS use `pnpm exec expo install <pkg>`, never `pnpm add <pkg>`. expo install knows the SDK alignment matrix; plain pnpm add picks `latest` and silently pulls SDK-mismatched versions.
+- For Metro resolution failures on transitive sub-path imports (e.g. `semver/functions/satisfies` from react-native-reanimated), add the leaf package as a direct dep of `apps/mobile` rather than chasing `public-hoist-pattern` globs. Metro cannot reliably follow pnpm's `.pnpm/<pkg>/node_modules/<dep>` symlink chain for sub-path imports even under shamefully-hoist. See deviation log entry 14.
+- Peer-dep warnings from `expo install` need actioning, not assumption. Missing peers must be installed as direct deps even if pnpm reports them resolved-via-hoist (Metro's resolver does not see the hoist chain the way pnpm does).
+- Supabase JS on RN requires `import "react-native-url-polyfill/auto"` as the FIRST import in `apps/mobile/lib/supabase.ts`. Without it, signInWithPassword throws silently because RN's URL implementation is partial.
+- Use protected route group layouts for auth in expo-router: `app/(auth)/_layout.tsx` redirects signed-in users to `/home`; `app/(app)/_layout.tsx` redirects signed-out users to `/sign-in`. Required for cold-launch + sign-out from any route.
+- Dual-Tailwind reality: `apps/web` runs Tailwind v4; `apps/mobile` runs Tailwind v3.4 (NativeWind v4 requirement). Do not bump mobile past `tailwindcss@^3.4.x` until NativeWind v5 ships stable.
+- TypeScript drift across surfaces: `~5.6` (web) vs `~5.9` (mobile). Each workspace has its own tsc. Tokens in `packages/design` are pure data and compile under both.
+
 ### Pre-push checklist (Mac terminal)
 
 ```bash
@@ -201,9 +216,13 @@ Auth flow, onboarding wizard, dashboard shell, mobile bottom nav, settings page.
 - ❌ 3G.C: PENDING — outbound reply form, send via Meta Graph API.
 - ❌ 3H: PENDING — AI inbound parsing (Claude/OpenAI), proposes customer/order/reply for vendor approval.
 
-### Phase 4 — Mobile (Apple-grade iOS first): NOT STARTED
+### Phase 4 — Mobile (Apple-grade iOS first): MOB-1 DONE
 
-- ❌ MOB-1 (current candidate slice): Expo bootstrap. RN + NativeWind + Supabase client + design tokens consumption + first sign-in screen.
+- ✅ **MOB-1**: Expo SDK 54 + RN 0.81.5 + NativeWind v4 + Supabase JS bootstrap. Working email/password sign-in flow with SecureStore-backed session persistence (chunked adapter for JWTs over 2KB). Tokens from `@1manbiz/design` via NativeWind. Protected route groups `(auth)` and `(app)`. Verified end-to-end on physical iPhone via Expo Go: sign-in, sign-out, cold-launch resume, sign-out clears SecureStore. Vercel production deploy READY for the underlying infra changes (commits `16dfe32` + `e2f5575`).
+- ❌ **MOB-2** (next): mobile dashboard home — revenue today, orders today, pending, active products tiles + recent orders list. Mobile equivalent of web's `dashboard/page.tsx`.
+- ❌ **MOB-3**: bottom tab navigation — Home, Conversations, Orders, Inventory, Settings.
+- 🟡 **DESIGN-1** (backlog): `packages/design/src/tokens.ts` lacks `colors.danger` / `colors.dangerSoft` (mobile uses `text-red-600` fallback for error text) and `colors.border` / `colors.borderStrong` (mobile reuses `textMuted` as input border, which is semantic abuse). Add tokens and replace fallbacks across web + mobile in one slice.
+- 🟡 **SDK upgrade** (backlog): when Xcode + iOS Simulator are ready, upgrade Expo 54 —> 56 in a dedicated slice for perf wins. Currently blocked by Expo Go App Store version lag.
 
 ### Infrastructure
 
@@ -259,7 +278,7 @@ Use Supabase MCP. NEVER paste actual user data into chat output unless owner exp
 
 ## 9. Locked Decisions (do not change without Change Record)
 
-- Brand colours: `#16a34a` green-600 (primary), white, black. No purple, pink, em-dashes.
+- Brand colours: `#00D26A` primary (from `packages/design/src/tokens.ts` — tokens.ts is source of truth, this line documents). White, black. No purple, pink, em-dashes.
 - Wordmark: "1Man" (black) + "." (green) + "Biz" (black).
 - Currency display: `₦` symbol, comma separators, no decimals on whole-naira amounts (e.g. `₦1,300,000`).
 - Table naming: snake_case singular for utility, snake_case plural for entities (`businesses`, `products`, `customers`, `orders`, `order_items`, `conversations`, `messages`, `channel_accounts`).
@@ -288,7 +307,33 @@ When more context is needed, see these files in `/mnt/project/`:
 
 ---
 
-## 11. Final Slice Footer Template
+## 11. Deviation Log
+
+Permanent record of unexpected setup hurdles and how they were resolved. Future debugging starts here when something looks off in the build/deploy pipeline.
+
+### Entries 01—12 (resolved during MOB-1 slice, commit `16dfe32`)
+
+01. `full_name` vs `first_name` schema assumption — fixed with `firstNameFrom` client helper in `apps/mobile/lib/profile.ts`.
+02. Tailwind v4 incompatible with NativeWind v4 — pinned mobile `tailwindcss` to `^3.4.x`.
+03. Loose `expo` wildcard pin — tightened to `~54.0.0` explicit.
+04. Em-dash in user-facing copy violates Section 1 design rules — substituted middle dot in app copy.
+05. SDK 56 unsupported by App Store Expo Go — downgraded to SDK 54.
+06. Bogus `expo-status-bar` config plugin entry — removed from `app.json` plugins.
+07. `@expo/metro-runtime` missing as direct dep — added via `pnpm exec expo install`.
+08. First install pulled SDK 56 version of metro-runtime — re-aligned to `~6.1.2` via expo install.
+09. pnpm isolated layout hides Expo runtime polyfills from Metro — initially tried `node-linker=hoisted` (later reverted, see entry 13).
+10. Hoisting exposed React 19.1 / 19.2 dual install in web bundle — fixed with `pnpm.overrides`.
+11. Supabase JS RN URL parsing silent failure — fixed with `import "react-native-url-polyfill/auto"` as first import.
+12. Cold-launch sign-out left stale Stack history — fixed with protected route group layouts.
+
+### Entries 13—14 (resolved during MOB-1 deploy recovery, commit `e2f5575`)
+
+13. **`node-linker=hoisted` broke Vercel CI.** Locally hoisted worked for Expo. On Vercel, hoisted eliminates `apps/web/node_modules/next/` entirely, but the next-build bin shim hardcodes that path. Result: `MODULE_NOT_FOUND` at the `next build` step. Fix: replace `node-linker=hoisted` with `shamefully-hoist=true`. Keeps pnpm's isolated linker (apps/web/node_modules/next/ stays a proper symlink, Vercel happy) while flattening every transitive dep to the workspace root for Metro. Best of both worlds.
+14. **Metro cannot resolve sub-path imports through pnpm symlinks even with shamefully-hoist.** Specifically, react-native-reanimated 4.x imports `semver/functions/satisfies`. Metro's nodeModulesPaths walker stops at the first node_modules with a matching package name and does not descend through pnpm's virtual-store symlinks for sub-path imports. Fix: add the leaf package (`semver`) as a direct dep of `apps/mobile`. Generalises to: when Metro chokes on a transitive sub-path import, pull the leaf package up as a direct dep rather than chasing public-hoist-pattern globs.
+
+---
+
+## 12. Final Slice Footer Template
 
 Every slice ends with this footer. Copy it verbatim:
 
@@ -310,4 +355,4 @@ Stop here for review.
 
 ---
 
-_Last updated: 2026-05-31, end of slice INFRA-1. Maintained by Claude (the chat instance) on owner request._
+_Last updated: 2026-05-31, end of slice DOCS-1 (post-MOB-1 deploy recovery). Maintained by Claude (the chat instance) on owner request._
