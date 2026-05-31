@@ -38,3 +38,41 @@ export function relativeTime(iso: string | null | undefined): string {
   if (diffSec < 604800) return `${Math.floor(diffSec / 86400)}d ago`;
   return new Date(iso).toLocaleDateString("en-NG", { day: "numeric", month: "short" });
 }
+
+// Compact relative time for inbox row: "just now", "5m", "2h", "Yesterday", "Mar 5".
+// Differs from relativeTime above by omitting the "ago" suffix and using the
+// label "Yesterday" instead of relativeTime's "yesterday".
+export function relativeTimeShort(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const then = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - then.getTime();
+  const min = Math.floor(diffMs / 60000);
+
+  if (min < 1) return "just now";
+  if (min < 60) return min + "m";
+  const hr = Math.floor(min / 60);
+  if (hr < 24 && then.toDateString() === now.toDateString()) return hr + "h";
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (then.toDateString() === yesterday.toDateString()) return "Yesterday";
+
+  const sameYear = then.getFullYear() === now.getFullYear();
+  return then.toLocaleDateString("en-NG", {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+}
+
+// HH:MM 24h time for message bubble timestamps.
+export function formatMessageTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleTimeString("en-NG", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+

@@ -5,7 +5,9 @@ import { supabase } from "./supabase";
 // (switching between businesses, staff/admin roles) is a future slice.
 //
 // Returns null if the user has no business yet (e.g. mid-onboarding).
-export async function getActiveBusinessId(userId: string): Promise<string | null> {
+export async function getActiveBusinessId(
+  userId: string,
+): Promise<string | null> {
   const { data, error } = await supabase
     .from("businesses")
     .select("id")
