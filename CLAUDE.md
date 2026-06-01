@@ -1,3 +1,6 @@
+cd ~/code/1manbiz
+cat > CLAUDE.md <<'CLAUDE_EOF'
+
 # 1Man.Biz — Claude Code Project Briefing
 
 > This file is the canonical project memory. Claude Code reads it automatically and treats it as standing context for every session. Do not delete or restructure without owner approval.
@@ -36,15 +39,16 @@ The owner works as Staff+ Engineer / 30-year architect. Every change follows thi
 
 ### Non-negotiable file rules
 
-- **Always read the current file before editing**, even if you "remember" it. Files drift between sessions.
+- **Always read the current file before editing**, even if you "remember" it. Files drift between sessions. Reading from the pushed commit on GitHub (raw.githubusercontent.com) is a valid way to get the authoritative current state.
 - **Preserve working code**. Only touch the scoped region. Avoid regressions.
 - **Preserve page structure and layout**. When extending a file, insert new logic in-place. Do not rearrange or reflow front-end structure. Visual layout must remain consistent across iterations.
 - **Per-item actions stay co-located** with the data they represent (in list maps, route/view elements).
 - **Never expand scope mid-slice**. If you find more work, list it as "next slice" and stop.
+- **Python heredoc with `assert src.count(old) == 1`** on every replace; for multi-file edits, validate all anchors first, then write. Audit for `\n` escape corruption and run a truncation guard (biggest file must end in `}`, `;`, or `>`) after every multi-file write.
 
 ### Stop conditions
 
-- File you've never seen → ask for full contents.
+- File you've never seen → read it first (GitHub raw or local).
 - Layout change of any kind → confirm before touching.
 - Locked decision (naming, route, schema) → produce a **Change Record** (what changes, why, impact, migration, rollback) and wait for explicit approval. Do not just proceed.
 
@@ -54,21 +58,6 @@ The owner works as Staff+ Engineer / 30-year architect. Every change follows thi
 
 ### Monorepo (pnpm workspaces 9.15.9)
 
-```
-1manbiz/
-├── apps/
-│   ├── web/         ← Next.js 15.5.18, App Router, React 19, TS strict, Tailwind v4, shadcn/ui, framer-motion
-│   └── mobile/      ← Expo + React Native + NativeWind (placeholder; MOB-1 will bootstrap)
-├── packages/
-│   ├── shared/      ← TypeScript types shared across surfaces (currently empty)
-│   └── design/      ← Design tokens (colours, typography, spacing, radii) — already populated
-├── supabase/
-│   └── migrations/  ← Forward + rollback SQL, atomic, numbered 0001+
-├── pnpm-workspace.yaml
-├── package.json      ← workspace root, private
-└── CLAUDE.md         ← this file
-```
-
 ### Backend
 
 - **Supabase project**: `lcffhrbadhjnyyzivoys` — name "1ManBiz", region eu-west-3, free tier.
@@ -76,10 +65,12 @@ The owner works as Staff+ Engineer / 30-year architect. Every change follows thi
 - **Auth**: email + password. Site URL `https://1manbiz.vercel.app`. Redirect URLs include `localhost:3000/**` and preview wildcard.
 - **Storage buckets**: `product-images`, `business-logos`.
 - **RLS**: enforced on every user-data table. Helper functions in `private` schema: `is_business_member(uuid)`, `is_business_owner(uuid)`.
+- **Realtime**: `messages` + `conversations` are in the `supabase_realtime` publication with `REPLICA IDENTITY FULL` (migration 0013). Subscriptions are RLS-scoped — vendors stream only their own business.
+- **Service-role client**: `apps/web/lib/supabase/admin.ts` bypasses RLS for the webhook ingest and outbound send paths ONLY, and only after explicit ownership verification. Never exposed to the client.
 
 ### Hosting
 
-- **GitHub**: `github.com/tekforallorg-dotcom/1manbiz` — main branch, solo dev (no PRs, direct push to main is OK).
+- **GitHub**: `github.com/tekforallorg-dotcom/1manbiz` — main branch, solo dev (no PRs, direct push to main is OK). Repo is public.
 - **Vercel**: project `1manbiz` under team `tekforallorg-dotcoms-projects`. Root Directory set to `apps/web`. Include files outside root: **ON**.
 - **Vercel IDs**: team `team_wH4R7DRuBcsRingXjOjXBZQR`, project `prj_EeyXQS3kesmdQ7IlSVPPlXhinPff`.
 - **Production URL**: `https://1manbiz.vercel.app`.
@@ -87,7 +78,7 @@ The owner works as Staff+ Engineer / 30-year architect. Every change follows thi
 
 ### External integrations
 
-- **Meta WhatsApp Cloud API**: App `1Man.biz` (id 989138553599749). Test number +1 555 669 8149 (phone_number_id 1192222053968757, WABA 27031650399817263). Webhook URL `/api/webhooks/whatsapp` verified by Meta. Subscribed field: `messages`.
+- **Meta WhatsApp Cloud API**: App `1Man.biz`. Test number +1 555 669 8149 (phone_number_id 1192222053968757). Graph API v22.0. Webhook `/api/webhooks/whatsapp` verified by Meta (HMAC enforced when `WHATSAPP_APP_SECRET` is set). Subscribed field: `messages`. **The access token lives ONLY in `channel_accounts.access_token` (DB) — never in chat, never in commits. If a token is exposed, revoke and regenerate.**
 - **Future**: Instagram (Meta Graph), Email (SMTP/ESP), Paystack, OPay, Moniepoint, bank webhooks. See PRD §7.
 
 ---
@@ -96,10 +87,10 @@ The owner works as Staff+ Engineer / 30-year architect. Every change follows thi
 
 Run before every checkpoint. Print ✅/⚠️ per item with one-line notes.
 
-1. **Types** — strict; no `any` without comment justifying it.
-2. **Imports** — complete, deduped, sorted; no dead imports.
+1. **Types** — strict; no `any` without comment justifying it. Prefer `unknown` / `Record<string, unknown>` + narrowing.
+2. **Imports** — complete, deduped, sorted; no dead imports (remove imports that move into extracted components).
 3. **Build** — no syntax/TS errors; JSX/templating well-formed.
-4. **Effects/State** — dependency arrays correct; no stale closures; memoize handlers passed down.
+4. **Effects/State** — dependency arrays correct; no stale closures; memoize handlers passed down; tear down subscriptions/listeners on unmount.
 5. **Error handling** — predictable branches; user-facing message + developer log.
 6. **Loading/Empty** — skeletons/placeholder text; no flicker due to race conditions.
 7. **No drift** — naming, routes, contracts, data shapes match prior decisions.
@@ -112,7 +103,7 @@ Run before every checkpoint. Print ✅/⚠️ per item with one-line notes.
 14. **Idempotence** — API handlers and jobs safe on retries.
 15. **Transactions/Consistency** — migrations atomic; multi-step writes guarded.
 16. **Feature flags** — default safe; flags gated near entry (when applicable).
-17. **Responsiveness** — layouts don't overflow; mobile/desktop sanity.
+17. **Responsiveness** — layouts don't overflow; mobile/desktop sanity; safe-area insets honoured.
 18. **i18n/Copy** — user text centralised; no hard-coded magic strings.
 19. **Dependency hygiene** — pin or range with reason; no unnecessary libs.
 20. **Docs** — top-of-file comments for tricky decisions; CHANGELOG/README snippet when needed.
@@ -136,22 +127,25 @@ Run before every checkpoint. Print ✅/⚠️ per item with one-line notes.
 ### Files & layout
 
 - **App Router**: `apps/web/app/(group)/route/page.tsx`, with `actions.ts` for server actions, and feature components co-located.
+- **Route-specific client components co-locate with their route** (e.g. `conversations/conversations-live.tsx`, `conversations/[id]/thread-messages.tsx`, `conversations/whatsapp-connect.tsx`). Truly shared dumb components live in `@/components`.
 - **No barrel files** unless explicitly justified.
 - **Components**: PascalCase. Files: kebab-case. Routes: kebab-case.
 - **Imports**: use `@/` path alias for `apps/web` internals (configured in `tsconfig.json`).
 
 ### Database
 
-- Every schema change is a numbered migration: `supabase/migrations/0012_thing.sql`.
+- Every schema change is a numbered migration: `supabase/migrations/0013_thing.sql`.
 - Each migration includes **forward + backward SQL** (rollback section commented at bottom or as separate `_down.sql`).
 - RLS is mandatory on every public-schema table that holds user data.
 - Trigger naming: `tg_<table>_<event>` under the `private` schema.
+- When applying via Supabase MCP to production, ALSO commit the matching migration file to the repo for parity. Never leave prod and repo out of sync.
 
 ### Commits
 
 - **Conventional Commits**: `feat(scope): subject`, `fix(scope): subject`, `chore(scope): ...`, `refactor:`, `docs:`, `test:`.
 - Subject in imperative mood, lowercase except proper nouns, no trailing period.
-- One feature = one commit. One slice = one commit. Migrations as separate commits from app code.
+- One feature = one commit. One slice = one commit. Migrations as separate commits from app code. Do not reuse a commit message body for a follow-up (e.g. a lint fix gets its own `fix(lint): ...`).
+- Commit bodies are ASCII-only (no em-dash, emoji, or HTML tags).
 
 ### Mobile workspace conventions (added by MOB-1)
 
@@ -163,18 +157,49 @@ Run before every checkpoint. Print ✅/⚠️ per item with one-line notes.
 - Peer-dep warnings from `expo install` need actioning, not assumption. Missing peers must be installed as direct deps even if pnpm reports them resolved-via-hoist (Metro's resolver does not see the hoist chain the way pnpm does).
 - Supabase JS on RN requires `import "react-native-url-polyfill/auto"` as the FIRST import in `apps/mobile/lib/supabase.ts`. Without it, signInWithPassword throws silently because RN's URL implementation is partial.
 - Use protected route group layouts for auth in expo-router: `app/(auth)/_layout.tsx` redirects signed-in users to `/home`; `app/(app)/_layout.tsx` redirects signed-out users to `/sign-in`. Required for cold-launch + sign-out from any route.
+- `SafeAreaView` is ALWAYS imported from `react-native-safe-area-context`, never `react-native`. For bottom-edge composers, drop the `bottom` edge and apply `useSafeAreaInsets().bottom` as paddingBottom (keyboard-aware: full inset when keyboard hidden, small base when shown).
 - Dual-Tailwind reality: `apps/web` runs Tailwind v4; `apps/mobile` runs Tailwind v3.4 (NativeWind v4 requirement). Do not bump mobile past `tailwindcss@^3.4.x` until NativeWind v5 ships stable.
 - TypeScript drift across surfaces: `~5.6` (web) vs `~5.9` (mobile). Each workspace has its own tsc. Tokens in `packages/design` are pure data and compile under both.
+- Metro can serve a STALE bundle after a correct push. After any mobile rewrite, `git --no-pager diff -- apps/mobile/<path>` to confirm, then `expo start -c` + device reload. See deviation log entry 17.
+
+### Messaging & realtime conventions (3G.B—3G.E)
+
+- Money is stored in **kobo** (integer; 1 NGN = 100 kobo). Divide by 100 ONLY at the format boundary. The currency formatter inserts a narrow no-break space (`\u202f`) between ₦ and the digits to avoid iOS glyph collision.
+- Inbound phone numbers are normalised through `lib/phone.ts` (`normalizePhoneE164`) on both surfaces. Never store raw digits or a naive `+` prefix.
+- Outbound WhatsApp ALWAYS goes through the single endpoint `apps/web/app/api/messages/send`. Web sends with cookie auth; mobile sends with a Bearer token from `supabase.auth.getSession()`. The endpoint is the single source of truth.
+- `meta_message_id UNIQUE` on `messages` is the idempotency boundary — the webhook insert and the outbound send both rely on it, and Meta retries are safe.
+- Realtime: subscribe via `supabase.channel(...).on("postgres_changes", { event, schema: "public", table, filter: "<col>=eq.<id>" }, cb)`, filtered by `conversation_id` (thread) or `business_id` (inbox); `removeChannel` on cleanup. Dedupe inserts by `id` so an optimistic send is not doubled. Web inbox/thread are server components, so realtime lives in client wrappers (`ThreadMessages`, `ConversationsLive`) seeded by server-rendered data; mobile screens subscribe directly. Server render + focus-refetch / router.refresh() remain as fallbacks if the socket never connects.
 
 ### Pre-push checklist (Mac terminal)
 
 ```bash
 cd ~/code/1manbiz
-pnpm --filter web build       # must be green
-git status --short             # review what's staged
-git add .                      # stage all (solo dev on main, OK)
-git commit -m "feat(scope): subject"
-git push                       # auto-deploys via Vercel
+
+# 1. Type-check BOTH apps (tsc is NOT a lint check — see deviation log 16)
+pnpm --filter web    exec tsc --noEmit
+pnpm --filter mobile exec tsc --noEmit
+
+# 2. Lint web — matches the Vercel build pipeline; tsc does NOT run ESLint
+pnpm --filter web exec next lint
+#    NOTE: `next lint` is deprecated and removed in Next 16. Before any Next 16
+#    bump, migrate: npx @next/codemod@canary next-lint-to-eslint-cli .
+
+# 3. Audit Python-heredoc edits for escape corruption (count should stay flat)
+grep -rn '\\n' apps packages | grep -v node_modules | grep -v '.next' | wc -l
+
+# 4. Truncation guard on the biggest file touched (must end in } ; or >)
+tail -c 50 <biggest_file_path>
+
+# 5. Visual-diff every mobile rewrite (catches silent heredoc misses — deviation 17)
+git --no-pager diff -- apps/mobile/<path>
+
+# 6. Optional: prove Vercel will pass before pushing
+pnpm --filter web exec next build
+
+# 7. Commit (Conventional Commits, ASCII-only body) + push
+git add -A
+git commit -m "<type>(<scope>): <subject>" -m "<body>"
+git push                                  # auto-deploys via Vercel
 ```
 
 ---
@@ -189,12 +214,13 @@ Claude Code must STOP and ask the owner before:
 - Changing locked decisions: brand colours, package names, route structure, table names, column names, primary tech stack.
 - Installing new dependencies (must justify why existing libs can't do the job).
 - Changing CI, build config, or Vercel project settings.
+- Putting any production secret in chat (Meta token etc.). Secrets go to Supabase Studio or Vercel env directly.
 
 If the owner's request seems to violate one of these, say so and ask for an explicit Change Record.
 
 ---
 
-## 7. Current Build State (as of 2026-05-31)
+## 7. Current Build State (as of 2026-06-01)
 
 ### Phase 1 — Foundations (web): ✅ DONE
 
@@ -209,38 +235,49 @@ Auth flow, onboarding wizard, dashboard shell, mobile bottom nav, settings page.
 - 3E.B Order detail page, mark-paid + cancel actions, real dashboard cards.
 - 3F Public receipt page at `/r/[code]` + share controls.
 
-### Phase 3 — WhatsApp + AI: PARTIAL
+### Phase 3 — WhatsApp + AI: 3G DONE (two-way live), AI pending
 
-- ✅ 3G.A: `channel_accounts` table (RLS-protected), `/api/webhooks/whatsapp` route, Conversations connect UI. Webhook verified by Meta. Gadget Locker connected to test number +1 555 669 8149.
-- 🟡 3G.B: PENDING — write conversations + messages migration, service-role admin client, webhook parser writes to DB, Conversations list + thread view UI.
-- ❌ 3G.C: PENDING — outbound reply form, send via Meta Graph API.
-- ❌ 3H: PENDING — AI inbound parsing (Claude/OpenAI), proposes customer/order/reply for vendor approval.
+- ✅ 3G.A: `channel_accounts` table (RLS), `/api/webhooks/whatsapp` route, Conversations connect UI. Webhook verified by Meta.
+- ✅ 3G.B: migration 0012 (conversations + messages), service-role admin client, webhook ingest pipeline (HMAC verify, E.164 normalise, upsert customer + conversation, idempotent message insert keyed on `meta_message_id`), web inbox + thread view.
+- ✅ 3G.C: outbound reply via single dual-auth endpoint `/api/messages/send` (cookie for web, Bearer for mobile), ownership-scoped, Meta Graph POST, message keyed on returned wamid. Verified end-to-end on web AND iPhone (customer received on real WhatsApp).
+- ✅ 3G.D: mobile Chats tab wired to real conversations/messages.
+- ✅ 3G.E: Supabase Realtime on `messages` + `conversations` (migration 0013). Inbox + thread update live on web and mobile with no refresh, via RLS-scoped `postgres_changes` subscriptions. Web uses client wrappers (`ThreadMessages`, `ConversationsLive`) over server-rendered initial data; mobile subscribes directly.
+- ❌ 3H: PENDING — AI inbound parsing (Claude/OpenAI) proposing customer/order/reply for vendor approval. `sender_role='ai'` already exists in `messages`. Needs a v1 product spec before build.
 
-### Phase 4 — Mobile (Apple-grade iOS first): MOB-1 DONE
+### Phase 4 — Mobile (Apple-grade iOS first): MOB-1..6 DONE
 
-- ✅ **MOB-1**: Expo SDK 54 + RN 0.81.5 + NativeWind v4 + Supabase JS bootstrap. Working email/password sign-in flow with SecureStore-backed session persistence (chunked adapter for JWTs over 2KB). Tokens from `@1manbiz/design` via NativeWind. Protected route groups `(auth)` and `(app)`. Verified end-to-end on physical iPhone via Expo Go: sign-in, sign-out, cold-launch resume, sign-out clears SecureStore. Vercel production deploy READY for the underlying infra changes (commits `16dfe32` + `e2f5575`).
-- ❌ **MOB-2** (next): mobile dashboard home — revenue today, orders today, pending, active products tiles + recent orders list. Mobile equivalent of web's `dashboard/page.tsx`.
-- ❌ **MOB-3**: bottom tab navigation — Home, Conversations, Orders, Inventory, Settings.
-- 🟡 **DESIGN-1** (backlog): `packages/design/src/tokens.ts` lacks `colors.danger` / `colors.dangerSoft` (mobile uses `text-red-600` fallback for error text) and `colors.border` / `colors.borderStrong` (mobile reuses `textMuted` as input border, which is semantic abuse). Add tokens and replace fallbacks across web + mobile in one slice.
-- 🟡 **SDK upgrade** (backlog): when Xcode + iOS Simulator are ready, upgrade Expo 54 —> 56 in a dedicated slice for perf wins. Currently blocked by Expo Go App Store version lag.
+- ✅ **MOB-1**: Expo SDK 54 + RN 0.81.5 + NativeWind v4 + Supabase JS bootstrap. Email/password sign-in, SecureStore chunked session, protected route groups `(auth)`/`(app)`.
+- ✅ **MOB-2**: dashboard home — 4 tiles (revenue today, orders today, pending, active products) + recent orders, pull-to-refresh, useFocusEffect.
+- ✅ **MOB-3**: bottom tab navigation (Home, Chats, Orders, Inventory, Settings); Stack > Tabs hierarchy.
+- ✅ **MOB-4 + MOB-5**: orders + inventory tabs with status-filter pills, pull-to-refresh.
+- ✅ **MOB-4.1**: order detail + mark-paid (native Alert confirm, optimistic flip, DB-trigger receipt code, View receipt deep link).
+- ✅ **MOB-6**: capture new order from iPhone (customer picker + product multi-select modal + qty steppers + sequential insert with orphan recovery).
+- ✅ **DESIGN-1**: design tokens wired into mobile NativeWind (flat aliases on `colors`); hardcoded hex eliminated.
+- ✅ **3G.C-mobile + padding**: thread composer (TextInput + Send + optimistic + rollback) with keyboard-aware safe-area bottom padding. Verified on iPhone.
+- 🟡 **SDK upgrade** (backlog): Expo 54 → 56 when Xcode + Simulator ready.
+- ❌ **MOB-7** (candidate): product detail + edit (closes the inventory loop the way MOB-4.1 closed orders).
+- ❌ **MOB-WhatsApp-Connect** (candidate): native Connect flow (currently bounces users to web for the Meta OAuth dance).
 
 ### Infrastructure
 
 - ✅ INFRA-1: pnpm workspaces monorepo restructure (commit `af39855`). Web deploys via `apps/web` root directory on Vercel.
+- ✅ INFRA-2: `.npmrc` `shamefully-hoist=true` + `pnpm.overrides` pinning react/react-dom to 19.1.0 (commit `e2f5575`).
 
 ### Live data (Gadget Locker — owner's own business, used as the dogfood tenant)
 
-- 1 business: Gadget Locker, slug `gadget-locker`, whatsapp `+234 907 007 5520`, catalogue active.
-- 3 products: iPhone 17 Pro (₦2.1M, 10 in stock), iPhone 17 Air (₦1.3M, 20), Pixel 9 Pro (₦1.8M, 0).
-- 1 customer: Adaeze Kalu (+234 801 234 5678).
-- 1 order: Adaeze, 1× iPhone 17 Air, ₦1,300,000, status `paid`, receipt code `QMJT5DT3`.
-- 1 channel_account: WhatsApp connected to test number, status `connected`.
+- 1 business: Gadget Locker, id `38bef9fa-c63d-4370-8382-acd1eed1a89a`, catalogue active.
+- 3 products: iPhone 17 Pro (₦2.1M), iPhone 17 Air (₦1.3M), Pixel 9 Pro (out of stock).
+- Customers include Adaeze and "P" (`+2347031064144` — a real WhatsApp-enabled device used for end-to-end testing).
+- 1 active conversation `605e24ac-5e19-47c3-9ba3-faa07019315a` (customer P): 4 messages (1 inbound "Hello", 3 outbound incl. one sent from the iPhone, delivered).
+- 1 channel_account: connected to the Meta test number (phone_number_id 1192222053968757), status `connected`. Access token in DB only.
 
-### DB migrations applied (11 total)
+### DB migrations applied (13 total)
 
 0001 profiles, 0002 businesses, 0003 business_members + RLS helpers,
 0004 products + product-images bucket, 0005 catalogue RPC + business-logos bucket,
-0006 search_path hardening, 0007 customers, 0008 orders + order_items, 0009 order status trigger, 0010 receipt_code + public.get_public_receipt RPC, 0011 channel_accounts.
+0006 search_path hardening, 0007 customers, 0008 orders + order_items, 0009 order status trigger, 0010 receipt_code + public.get_public_receipt RPC, 0011 channel_accounts,
+0012 conversations + messages (RLS, meta_message_id UNIQUE idempotency, inbox + thread indexes),
+0013 realtime_messaging (messages + conversations added to supabase_realtime publication, REPLICA IDENTITY FULL).
 
 ---
 
@@ -272,7 +309,7 @@ Ask the Vercel MCP: `list_deployments` for project `1manbiz`. Look for state `RE
 
 ### Read/query production DB
 
-Use Supabase MCP. NEVER paste actual user data into chat output unless owner explicitly requests it.
+Use Supabase MCP. NEVER paste actual user data into chat output unless owner explicitly requests it. Return booleans/counts for sensitive fields (e.g. token presence), never the value.
 
 ---
 
@@ -281,11 +318,15 @@ Use Supabase MCP. NEVER paste actual user data into chat output unless owner exp
 - Brand colours: `#00D26A` primary (from `packages/design/src/tokens.ts` — tokens.ts is source of truth, this line documents). White, black. No purple, pink, em-dashes.
 - Wordmark: "1Man" (black) + "." (green) + "Biz" (black).
 - Currency display: `₦` symbol, comma separators, no decimals on whole-naira amounts (e.g. `₦1,300,000`).
+- Money is stored in kobo (integer; 1 NGN = 100 kobo). Divide by 100 only at the format boundary. Formatter uses a narrow no-break space (`\u202f`) between `₦` and digits.
 - Table naming: snake_case singular for utility, snake_case plural for entities (`businesses`, `products`, `customers`, `orders`, `order_items`, `conversations`, `messages`, `channel_accounts`).
 - Foreign keys: `<table>_id` (e.g. `business_id`, `customer_id`).
 - Timestamps: every table has `created_at timestamptz default now()` and `updated_at timestamptz default now()` with a trigger to bump `updated_at` on row update.
-- Phone numbers: stored as E.164 (e.g. `+2348012345678`) in column `phone_e164`.
+- Phone numbers: stored as E.164 (e.g. `+2348012345678`) in column `phone_e164`; normalised via `lib/phone.ts`.
 - Receipt codes: 8-char alphanumeric uppercase, unique per business, generated by `public.generate_receipt_code()`.
+- Outbound WhatsApp always goes through `apps/web/app/api/messages/send` (single source of truth). `meta_message_id UNIQUE` on `messages` is the idempotency boundary. The service-role admin client is used only after explicit ownership verification.
+- Realtime: `messages` + `conversations` are in the `supabase_realtime` publication with REPLICA IDENTITY FULL; subscriptions are RLS-scoped.
+- Production secrets (Meta access token) live only in the DB (`channel_accounts.access_token`) or Vercel env vars — never in chat or commits.
 
 ---
 
@@ -313,15 +354,15 @@ Permanent record of unexpected setup hurdles and how they were resolved. Future 
 
 ### Entries 01—12 (resolved during MOB-1 slice, commit `16dfe32`)
 
-01. `full_name` vs `first_name` schema assumption — fixed with `firstNameFrom` client helper in `apps/mobile/lib/profile.ts`.
-02. Tailwind v4 incompatible with NativeWind v4 — pinned mobile `tailwindcss` to `^3.4.x`.
-03. Loose `expo` wildcard pin — tightened to `~54.0.0` explicit.
-04. Em-dash in user-facing copy violates Section 1 design rules — substituted middle dot in app copy.
-05. SDK 56 unsupported by App Store Expo Go — downgraded to SDK 54.
-06. Bogus `expo-status-bar` config plugin entry — removed from `app.json` plugins.
-07. `@expo/metro-runtime` missing as direct dep — added via `pnpm exec expo install`.
-08. First install pulled SDK 56 version of metro-runtime — re-aligned to `~6.1.2` via expo install.
-09. pnpm isolated layout hides Expo runtime polyfills from Metro — initially tried `node-linker=hoisted` (later reverted, see entry 13).
+1.  `full_name` vs `first_name` schema assumption — fixed with `firstNameFrom` client helper in `apps/mobile/lib/profile.ts`.
+2.  Tailwind v4 incompatible with NativeWind v4 — pinned mobile `tailwindcss` to `^3.4.x`.
+3.  Loose `expo` wildcard pin — tightened to `~54.0.0` explicit.
+4.  Em-dash in user-facing copy violates Section 1 design rules — substituted middle dot in app copy.
+5.  SDK 56 unsupported by App Store Expo Go — downgraded to SDK 54.
+6.  Bogus `expo-status-bar` config plugin entry — removed from `app.json` plugins.
+7.  `@expo/metro-runtime` missing as direct dep — added via `pnpm exec expo install`.
+8.  First install pulled SDK 56 version of metro-runtime — re-aligned to `~6.1.2` via expo install.
+9.  pnpm isolated layout hides Expo runtime polyfills from Metro — initially tried `node-linker=hoisted` (later reverted, see entry 13).
 10. Hoisting exposed React 19.1 / 19.2 dual install in web bundle — fixed with `pnpm.overrides`.
 11. Supabase JS RN URL parsing silent failure — fixed with `import "react-native-url-polyfill/auto"` as first import.
 12. Cold-launch sign-out left stale Stack history — fixed with protected route group layouts.
@@ -331,28 +372,17 @@ Permanent record of unexpected setup hurdles and how they were resolved. Future 
 13. **`node-linker=hoisted` broke Vercel CI.** Locally hoisted worked for Expo. On Vercel, hoisted eliminates `apps/web/node_modules/next/` entirely, but the next-build bin shim hardcodes that path. Result: `MODULE_NOT_FOUND` at the `next build` step. Fix: replace `node-linker=hoisted` with `shamefully-hoist=true`. Keeps pnpm's isolated linker (apps/web/node_modules/next/ stays a proper symlink, Vercel happy) while flattening every transitive dep to the workspace root for Metro. Best of both worlds.
 14. **Metro cannot resolve sub-path imports through pnpm symlinks even with shamefully-hoist.** Specifically, react-native-reanimated 4.x imports `semver/functions/satisfies`. Metro's nodeModulesPaths walker stops at the first node_modules with a matching package name and does not descend through pnpm's virtual-store symlinks for sub-path imports. Fix: add the leaf package (`semver`) as a direct dep of `apps/mobile`. Generalises to: when Metro chokes on a transitive sub-path import, pull the leaf package up as a direct dep rather than chasing public-hoist-pattern globs.
 
+### Entries 15—20 (resolved across the 3G.B—3G.E messaging slices)
+
+15. **Meta access tokens pasted in chat were compromised (twice).** Two tokens were exposed in chat and revoked. Rule: permanent production secrets NEVER appear in chat — they go directly into Supabase Studio (`channel_accounts.access_token`) or Vercel env vars. Never offer a "paste it in chat" path. Before pasting into a populated DB field, select-all-delete first (see entry 18).
+16. **`tsc --noEmit` is NOT a lint check.** 3G.C passed tsc locally but failed Vercel with `@typescript-eslint/no-explicit-any`. Next.js runs ESLint during its build; tsc does not. Pre-push must run BOTH tsc (each app) AND `next lint` (web).
+17. **Metro can serve a stale bundle after a correct push.** The 3G.C mobile composer shipped in `cdcde69` (confirmed by reading the pushed file on GitHub) but the iPhone still showed the old screen — stale Metro cache, not a missing rewrite. Fix: `expo start -c` + device reload. Process: visual-diff every mobile rewrite immediately after applying it.
+18. **DB string-field concatenation bug.** Pasting a new token into a non-empty field produced a ~600-char corrupted value (old + new) and continuous 401 OAuthException code 190. Always select-all-delete before pasting into a populated DB field.
+19. **`unknown` over `any`.** ESLint blocks `any` even with a rationale. Use `unknown` / `Record<string, unknown>` + narrowing, including in catch params and realtime payloads.
+20. **`next lint` deprecated in Next 16.** Before any Next 16 bump, migrate the pre-push gate to the ESLint CLI: `npx @next/codemod@canary next-lint-to-eslint-cli .`
+
 ---
 
 ## 12. Final Slice Footer Template
 
 Every slice ends with this footer. Copy it verbatim:
-
-```
-### What I changed
-- 1–3 bullet summary.
-
-### How to verify now
-1. Numbered steps with exact routes/commands/selectors.
-
-### Known limitations / Next slice
-- Short list of out-of-scope items observed.
-
-### Quality Gate
-[Print the 20-point checklist with ✅/⚠️ + one-line notes]
-
-Stop here for review.
-```
-
----
-
-_Last updated: 2026-05-31, end of slice DOCS-1 (post-MOB-1 deploy recovery). Maintained by Claude (the chat instance) on owner request._

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -6,6 +6,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   Text,
   TextInput,
@@ -39,6 +40,7 @@ export default function ConversationThreadScreen() {
 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
 
@@ -74,6 +76,19 @@ export default function ConversationThreadScreen() {
       }
     })();
     return () => { cancelled = true; };
+  }, [id]);
+
+  const onRefresh = useCallback(async () => {
+    if (!id) return;
+    setRefreshing(true);
+    try {
+      const m = await fetchMessages(id);
+      setMessages(m);
+    } catch {
+      // Keep the current list on a refresh error; surfaced errors live on load.
+    } finally {
+      setRefreshing(false);
+    }
   }, [id]);
 
   // Scroll to bottom when message list changes.
@@ -113,22 +128,37 @@ export default function ConversationThreadScreen() {
       sent_at: r.sent_at as string,
       meta_status: (r.meta_status as string | null) ?? null,
     });
-    const channel = supabase
-      .channel(`messages:${id}`)
-      .on("postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${id}` },
-        (payload) => {
-          const row = mapRow(payload.new as Record<string, unknown>);
-          setMessages((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]));
-        })
-      .on("postgres_changes",
-        { event: "UPDATE", schema: "public", table: "messages", filter: `conversation_id=eq.${id}` },
-        (payload) => {
-          const row = mapRow(payload.new as Record<string, unknown>);
-          setMessages((prev) => prev.map((m) => (m.id === row.id ? row : m)));
-        })
-      .subscribe();
-    return () => { void supabase.removeChannel(channel); };
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
+    (async () => {
+      // RLS-gated postgres_changes only reach an authenticated socket. On RN the
+      // realtime socket can join as anon before the persisted session attaches,
+      // so its subscription bindings are created unauthenticated and every event
+      // is dropped. Set the user token BEFORE subscribe so the join is authed.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (session?.access_token) void supabase.realtime.setAuth(session.access_token);
+
+      channel = supabase
+        .channel(`messages:${id}`)
+        .on("postgres_changes",
+          { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${id}` },
+          (payload) => {
+            const row = mapRow(payload.new as Record<string, unknown>);
+            setMessages((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]));
+          })
+        .on("postgres_changes",
+          { event: "UPDATE", schema: "public", table: "messages", filter: `conversation_id=eq.${id}` },
+          (payload) => {
+            const row = mapRow(payload.new as Record<string, unknown>);
+            setMessages((prev) => prev.map((m) => (m.id === row.id ? row : m)));
+          })
+        .subscribe();
+    })();
+    return () => {
+      cancelled = true;
+      if (channel) void supabase.removeChannel(channel);
+    };
   }, [id]);
 
   const canSend = draft.trim().length > 0 && !sending && !!id;
@@ -209,6 +239,13 @@ export default function ConversationThreadScreen() {
             ref={scrollRef}
             className="flex-1 px-4"
             contentContainerStyle={{ paddingTop: 12, paddingBottom: 12 }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={designColors.primary}
+              />
+            }
           >
             {messages.length === 0 ? (
               <Text className="text-textMuted text-sm text-center mt-10">No messages yet.</Text>

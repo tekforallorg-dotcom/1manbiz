@@ -68,13 +68,26 @@ export default function ConversationsScreen() {
   // silently so order and unread badges stay current without a manual refresh.
   useEffect(() => {
     if (!businessId) return;
-    const channel = supabase
-      .channel(`conversations:${businessId}`)
-      .on("postgres_changes",
-        { event: "*", schema: "public", table: "conversations", filter: `business_id=eq.${businessId}` },
-        () => { fetchConversations(businessId).then(setConversations).catch(() => {}); })
-      .subscribe();
-    return () => { void supabase.removeChannel(channel); };
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
+    (async () => {
+      // Authenticate the realtime socket before joining so RLS lets this
+      // business's conversation changes through (see thread screen for detail).
+      const { data: { session } } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (session?.access_token) void supabase.realtime.setAuth(session.access_token);
+
+      channel = supabase
+        .channel(`conversations:${businessId}`)
+        .on("postgres_changes",
+          { event: "*", schema: "public", table: "conversations", filter: `business_id=eq.${businessId}` },
+          () => { fetchConversations(businessId).then(setConversations).catch(() => {}); })
+        .subscribe();
+    })();
+    return () => {
+      cancelled = true;
+      if (channel) void supabase.removeChannel(channel);
+    };
   }, [businessId]);
 
   const onRefresh = useCallback(() => {
