@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { View, Text, ScrollView, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useSession } from "../../../lib/session";
 import { getActiveBusinessId } from "../../../lib/business";
 import { fetchProducts, type ProductFilter, type Product } from "../../../lib/products";
@@ -17,6 +17,7 @@ const FILTER_OPTIONS: { value: ProductFilter; label: string }[] = [
 export default function InventoryScreen() {
   const { session } = useSession();
   const userId = session?.user?.id;
+  const router = useRouter();
 
   const [filter, setFilter] = useState<ProductFilter>("all");
   const [products, setProducts] = useState<Product[] | null>(null);
@@ -84,7 +85,7 @@ export default function InventoryScreen() {
               <ProductRow
                 key={product.id}
                 product={product}
-                onPress={() => console.log("[inventory] tap product", product.id)}
+                onPress={() => router.push(`/products/${product.id}`)}
               />
             ))}
           </View>
