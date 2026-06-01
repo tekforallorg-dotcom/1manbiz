@@ -40,6 +40,7 @@ type DraftLine = {
   name: string;
   qty: number;
   unitPriceKobo: number;
+  stockQty: number;
 };
 
 let draftUidSeq = 0;
@@ -244,6 +245,7 @@ export default function ConversationThreadScreen() {
         name: li.name,
         qty: li.qty,
         unitPriceKobo: li.unitPriceKobo,
+        stockQty: li.stockQty,
       })),
     );
   }
@@ -451,6 +453,13 @@ export default function ConversationThreadScreen() {
                     <View className="flex-1 mr-2">
                       <Text className="text-text text-base" numberOfLines={1}>{l.name}</Text>
                       <Text className="text-textMuted text-xs">{formatNaira(l.unitPriceKobo)} each</Text>
+                      {l.qty > l.stockQty ? (
+                        <Text className="text-warn text-xs mt-0.5">
+                          {l.stockQty === 0
+                            ? "Out of stock"
+                            : `Only ${l.stockQty} in stock`}
+                        </Text>
+                      ) : null}
                     </View>
                     <View className="flex-row items-center bg-gray-100 rounded-full px-1 py-1 mr-2">
                       <Pressable
