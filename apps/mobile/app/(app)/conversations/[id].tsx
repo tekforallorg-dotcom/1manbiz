@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,7 +12,7 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChevronLeft, Send } from "lucide-react-native";
 import { colors as designColors } from "@1manbiz/design";
 
@@ -40,6 +41,9 @@ export default function ConversationThreadScreen() {
   const [sending, setSending] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
+
+  const insets = useSafeAreaInsets();
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,6 +83,20 @@ export default function ConversationThreadScreen() {
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
     }
   }, [messages.length]);
+
+  // Keep the composer snug to the keyboard when open, and clear of the home
+  // indicator when closed. A static safe-area inset alone would float the
+  // input above the keyboard, so we drop to a small base while it is shown.
+  useEffect(() => {
+    const showEvt = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvt = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSub = Keyboard.addListener(showEvt, () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvt, () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const canSend = draft.trim().length > 0 && !sending && !!id;
 
@@ -169,7 +187,10 @@ export default function ConversationThreadScreen() {
 
         {/* Reply composer */}
         {!loading && !error ? (
-          <View className="px-3 py-2 border-t border-border bg-background">
+          <View
+            className="px-3 pt-2 border-t border-border bg-background"
+            style={{ paddingBottom: keyboardVisible ? 8 : insets.bottom + 8 }}
+          >
             <View className="flex-row items-end">
               <View className="flex-1 bg-surface-muted rounded-2xl px-3.5 py-2 mr-2">
                 <TextInput
