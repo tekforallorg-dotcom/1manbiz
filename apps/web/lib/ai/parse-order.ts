@@ -24,24 +24,10 @@ export interface InboundLine {
   body_text: string;
 }
 
-export interface ProposalLineItem {
-  productId: string;
-  name: string;          // authoritative, from catalog
-  qty: number;
-  unitPriceKobo: number; // authoritative, from catalog
-}
-
-export interface CustomerHint {
-  name: string | null;
-  phone: string | null;
-}
-
-export interface OrderProposal {
-  lineItems: ProposalLineItem[];
-  customerHint: CustomerHint | null;
-  notes: string;
-  confidence: "high" | "low";
-}
+// Proposal shape is the cross-app contract; defined once in @1manbiz/shared.
+// Re-exported here so existing importers of "@/lib/ai/parse-order" keep working.
+import type { ProposalLineItem, CustomerHint, OrderProposal } from "@1manbiz/shared";
+export type { ProposalLineItem, CustomerHint, OrderProposal };
 
 export type ParseResult =
   | { ok: true; proposal: OrderProposal }
@@ -97,6 +83,7 @@ function resolveProposal(parsed: unknown, catalog: CatalogProduct[]): ParseResul
       name: prod.name,
       qty,
       unitPriceKobo: prod.price_kobo,
+      stockQty: prod.stock_quantity,
     });
   }
 

@@ -33,6 +33,7 @@ export interface ProposalLineItem {
   name: string;
   qty: number;
   unitPriceKobo: number;
+  stockQty: number; // catalog stock at draft time; for soft over-stock warnings
 }
 
 export interface CustomerHint {
