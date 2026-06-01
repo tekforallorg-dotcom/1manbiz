@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Package } from "lucide-react";
 
 import { formatNairaFromKobo } from "@/lib/format";
@@ -22,11 +23,16 @@ export function ProductList({ products }: { products: Product[] }) {
         const outOfStock = product.stock_quantity === 0;
         const lowStock =
           product.stock_quantity > 0 && product.stock_quantity <= 5;
+        const archived = product.status === "archived";
 
         return (
-          <article
+          <Link
             key={product.id}
-            className="group flex flex-col overflow-hidden rounded-2xl bg-gradient-to-b from-white to-surface-muted/40 ring-1 ring-black/[0.05] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_10px_28px_-10px_rgba(0,0,0,0.12)] hover:ring-black/[0.08]"
+            href={`/dashboard/inventory/${product.id}`}
+            className={
+              "group flex flex-col overflow-hidden rounded-2xl bg-gradient-to-b from-white to-surface-muted/40 ring-1 ring-black/[0.05] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_10px_28px_-10px_rgba(0,0,0,0.12)] hover:ring-black/[0.08] " +
+              (archived ? "opacity-60" : "")
+            }
           >
             {/* Image ? inset tile with its own gradient + rounded corners */}
             <div className="relative m-2 aspect-square overflow-hidden rounded-xl bg-gradient-to-br from-surface-muted/60 via-white to-surface-muted/30 ring-1 ring-black/[0.03]">
@@ -41,6 +47,14 @@ export function ProductList({ products }: { products: Product[] }) {
               ) : (
                 <div className="grid size-full place-items-center text-text-muted">
                   <Package size={28} strokeWidth={1.25} />
+                </div>
+              )}
+
+              {archived && (
+                <div className="absolute left-2 top-2">
+                  <div className="rounded-full bg-white/95 px-2 py-0.5 text-[10px] font-medium text-text-secondary ring-1 ring-black/[0.04] backdrop-blur-sm">
+                    Archived
+                  </div>
                 </div>
               )}
 
@@ -78,7 +92,7 @@ export function ProductList({ products }: { products: Product[] }) {
                 ) : null}
               </div>
             </div>
-          </article>
+          </Link>
         );
       })}
     </div>

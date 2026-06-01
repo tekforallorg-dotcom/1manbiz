@@ -30,7 +30,6 @@ export default async function InventoryPage() {
       "id, name, sku, price_kobo, stock_quantity, image_path, status, created_at",
     )
     .eq("business_id", business.id)
-    .eq("status", "active")
     .order("created_at", { ascending: false });
 
   if (error) {
