@@ -108,33 +108,44 @@ export async function parseOrderFromMessages(args: {
 }): Promise<ParseResult> {
   const { apiKey, messages, catalog } = args;
 
-  const customerText: string[] = [];
+  // Build a role-labelled transcript of the customer/shop exchange. Order intent
+  // comes from the customer, but the shop (vendor) often restates or confirms it
+  // ("so that's 2 X and 1 Y, deliver to Z") - the cleanest statement of the order
+  // frequently lives in a vendor line, so we feed both sides as context. Prior
+  // 'ai' drafts are excluded to avoid a self-reinforcing feedback loop.
+  const convoLines: string[] = [];
   for (const m of messages) {
-    if (m.sender_role !== "customer") continue;
+    if (m.sender_role !== "customer" && m.sender_role !== "vendor") continue;
     const t = (m.body_text ?? "").trim();
-    if (t) customerText.push(t);
+    if (!t) continue;
+    const who = m.sender_role === "customer" ? "Customer" : "Shop";
+    convoLines.push(`${who}: ${t}`);
   }
 
-  if (customerText.length === 0) {
-    return { ok: false, error: "No customer messages to read yet" };
+  if (convoLines.length === 0) {
+    return { ok: false, error: "No messages to read yet" };
   }
   if (catalog.length === 0) {
     return { ok: false, error: "No active products to match against" };
   }
 
   const catalogLines = catalog.map((p) => `- ${p.id} | ${p.name}`).join("\n");
-  const recent = customerText.slice(-12).join("\n");
+  const recent = convoLines.slice(-20).join("\n");
 
   const system =
-    "You convert a customer's chat messages into a draft order for a small shop. " +
-    "You are given the shop's product catalog (id and name only) and recent customer messages. " +
+    "You convert a chat between a customer and a shop into a draft order for that shop. " +
+    "You are given the shop's product catalog (id and name only) and the recent conversation, " +
+    "where each line is labelled 'Customer:' or 'Shop:'. " +
+    "Extract what the CUSTOMER is buying. Shop lines are context: they may confirm, clarify, or " +
+    "restate the order, so use them to settle items and quantities, but never invent an order the " +
+    "customer did not actually request. " +
     "Map only to catalog product ids. Never invent products or ids. Never output prices. " +
-    "If a quantity is unclear, use 1. If the customer is not actually ordering, return an empty items array. " +
+    "If a quantity is unclear, use 1. If neither side indicates a real order, return an empty items array. " +
     "Respond with ONLY a single JSON object, no markdown fences, no prose.";
 
   const user =
     `CATALOG (id | name):\n${catalogLines}\n\n` +
-    `CUSTOMER MESSAGES (oldest to newest):\n${recent}\n\n` +
+    `CONVERSATION (oldest to newest):\n${recent}\n\n` +
     `Return JSON exactly in this shape: ` +
     `{"items":[{"productId":"<catalog id>","qty":<integer>}],` +
     `"customer":{"name":<string or null>,"phone":<string or null>},` +
