@@ -1,6 +1,3 @@
-cd ~/code/1manbiz
-cat > CLAUDE.md <<'CLAUDE_EOF'
-
 # 1Man.Biz — Claude Code Project Briefing
 
 > This file is the canonical project memory. Claude Code reads it automatically and treats it as standing context for every session. Do not delete or restructure without owner approval.
@@ -386,3 +383,23 @@ Permanent record of unexpected setup hurdles and how they were resolved. Future 
 ## 12. Final Slice Footer Template
 
 Every slice ends with this footer. Copy it verbatim:
+
+```
+### What I changed
+- 1–3 bullet summary.
+
+### How to verify now
+1. Numbered steps with exact routes/commands/selectors.
+
+### Known limitations / Next slice
+- Short list of out-of-scope items observed.
+
+### Quality Gate
+[Print the 20-point checklist with ✅/⚠️ + one-line notes]
+
+Stop here for review.
+```
+
+---
+
+_Last updated: 2026-06-01, end of slice 3G.E (Supabase Realtime), HEAD on main `f3709b8`. Maintained by Claude on owner request._
