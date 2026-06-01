@@ -4,6 +4,7 @@ import {
   Alert,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -14,10 +15,14 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronLeft, Send } from "lucide-react-native";
+import { ChevronLeft, Send, Sparkles, X, Minus, Plus } from "lucide-react-native";
 import { colors as designColors } from "@1manbiz/design";
 
 import { getActiveBusinessId } from "../../../lib/business";
+import { parseOrderFromConversation, type OrderProposal } from "../../../lib/parse-order";
+import { createOrder } from "../../../lib/order-create";
+import { createCustomer } from "../../../lib/customers";
+import { formatNaira } from "../../../lib/format";
 import {
   fetchConversationHeader,
   fetchMessages,
@@ -28,6 +33,20 @@ import {
 import { sendReply } from "../../../lib/messages";
 import { supabase } from "../../../lib/supabase";
 import { MessageBubble } from "../../../components/message-bubble";
+
+type DraftLine = {
+  uid: string;
+  productId: string;
+  name: string;
+  qty: number;
+  unitPriceKobo: number;
+};
+
+let draftUidSeq = 0;
+function nextDraftUid(): string {
+  draftUidSeq += 1;
+  return "dl" + draftUidSeq;
+}
 
 export default function ConversationThreadScreen() {
   const router = useRouter();
@@ -42,6 +61,14 @@ export default function ConversationThreadScreen() {
   const [sending, setSending] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  // AI order-draft sheet (3H.3)
+  const [businessId, setBusinessId] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [drafting, setDrafting] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [lines, setLines] = useState<DraftLine[]>([]);
+  const [creating, setCreating] = useState(false);
+
   const scrollRef = useRef<ScrollView>(null);
 
   const insets = useSafeAreaInsets();
@@ -53,10 +80,11 @@ export default function ConversationThreadScreen() {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { setError("Not signed in"); return; }
-        const businessId = await getActiveBusinessId(user.id);
-        if (!businessId || !id) { setError("No business"); return; }
+        const bizId = await getActiveBusinessId(user.id);
+        if (!bizId || !id) { setError("No business"); return; }
+        if (!cancelled) setBusinessId(bizId);
 
-        const h = await fetchConversationHeader(id, businessId);
+        const h = await fetchConversationHeader(id, bizId);
         if (cancelled) return;
         if (!h) { setError("Conversation not found"); return; }
         setHeader(h);
@@ -65,7 +93,7 @@ export default function ConversationThreadScreen() {
         if (cancelled) return;
         setMessages(m);
 
-        await markConversationRead(id, businessId);
+        await markConversationRead(id, bizId);
       } catch (e) {
         if (!cancelled) {
           const msg = e instanceof Error ? e.message : "Failed to load";
@@ -197,6 +225,86 @@ export default function ConversationThreadScreen() {
     setSending(false);
   }
 
+  async function openDraft() {
+    if (!id) return;
+    setSheetOpen(true);
+    setDrafting(true);
+    setDraftError(null);
+    setLines([]);
+    const result = await parseOrderFromConversation(id);
+    setDrafting(false);
+    if (!result.ok) {
+      setDraftError(result.error);
+      return;
+    }
+    setLines(
+      result.proposal.lineItems.map((li) => ({
+        uid: nextDraftUid(),
+        productId: li.productId,
+        name: li.name,
+        qty: li.qty,
+        unitPriceKobo: li.unitPriceKobo,
+      })),
+    );
+  }
+
+  function setLineQty(uid: string, qty: number) {
+    setLines((prev) =>
+      prev.map((l) => (l.uid === uid ? { ...l, qty: Math.min(999, Math.max(1, qty)) } : l)),
+    );
+  }
+
+  function removeLine(uid: string) {
+    setLines((prev) => prev.filter((l) => l.uid !== uid));
+  }
+
+  const draftSubtotalKobo = lines.reduce((sum, l) => sum + l.unitPriceKobo * l.qty, 0);
+
+  async function createFromDraft() {
+    if (!id || !businessId || lines.length === 0 || creating) return;
+    setCreating(true);
+    setDraftError(null);
+
+    let customerId = header?.customer_id ?? null;
+    if (!customerId) {
+      const phone = (header?.contact_phone_e164 ?? "").trim();
+      if (!phone) {
+        setDraftError("This chat has no linked customer yet. Reopen it to link the contact, then retry.");
+        setCreating(false);
+        return;
+      }
+      const made = await createCustomer(businessId, header?.customer_name ?? phone, phone);
+      if (made.error || !made.customer) {
+        setDraftError(made.error ?? "Could not link a customer.");
+        setCreating(false);
+        return;
+      }
+      customerId = made.customer.id;
+    }
+
+    const result = await createOrder({
+      businessId,
+      customerId,
+      source: "whatsapp_ai",
+      items: lines.map((l) => ({
+        product_id: l.productId,
+        name: l.name,
+        price_kobo: l.unitPriceKobo,
+        quantity: l.qty,
+      })),
+    });
+
+    if (result.error && !result.id) {
+      setDraftError(result.error);
+      setCreating(false);
+      return;
+    }
+
+    setCreating(false);
+    setSheetOpen(false);
+    router.push(`/orders/${result.id}`);
+  }
+
   const displayName = header?.customer_name
     ?? header?.contact_phone_e164
     ?? "Customer";
@@ -224,6 +332,16 @@ export default function ConversationThreadScreen() {
               <Text className="text-textMuted text-xs" numberOfLines={1}>{header?.contact_phone_e164}</Text>
             ) : null}
           </View>
+          {!loading && !error ? (
+            <Pressable
+              onPress={openDraft}
+              className="flex-row items-center bg-primary rounded-full px-3 py-1.5 active:opacity-80"
+              hitSlop={6}
+            >
+              <Sparkles size={14} color="#FFFFFF" strokeWidth={2} />
+              <Text className="text-white text-sm font-semibold ml-1">Draft</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         {loading ? (
@@ -286,6 +404,111 @@ export default function ConversationThreadScreen() {
           </View>
         ) : null}
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={sheetOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSheetOpen(false)}
+      >
+        <View className="flex-1 justify-end bg-black/40">
+          <View
+            className="bg-background rounded-t-3xl px-4 pt-4"
+            style={{ paddingBottom: insets.bottom + 16, maxHeight: "85%" }}
+          >
+            <View className="flex-row items-center justify-between mb-1">
+              <Text className="text-text text-lg font-semibold">Draft order from chat</Text>
+              <Pressable
+                onPress={() => setSheetOpen(false)}
+                className="w-9 h-9 items-center justify-center rounded-full active:opacity-60"
+                hitSlop={6}
+              >
+                <X size={20} color={designColors.text} strokeWidth={2} />
+              </Pressable>
+            </View>
+            <Text className="text-textMuted text-sm mb-3">
+              AI reads this chat and suggests an order. Review and edit before you create it.
+            </Text>
+
+            {drafting ? (
+              <View className="items-center py-10">
+                <ActivityIndicator color={designColors.primary} />
+                <Text className="text-textMuted text-sm mt-3">Reading the chat...</Text>
+              </View>
+            ) : draftError ? (
+              <Text className="text-danger text-sm py-4">{draftError}</Text>
+            ) : lines.length === 0 ? (
+              <Text className="text-textMuted text-sm py-6 text-center">
+                No orderable items found in this chat yet.
+              </Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ paddingBottom: 8 }}>
+                {lines.map((l) => (
+                  <View
+                    key={l.uid}
+                    className="flex-row items-center bg-surface-muted rounded-2xl px-3 py-3 mb-2"
+                  >
+                    <View className="flex-1 mr-2">
+                      <Text className="text-text text-base" numberOfLines={1}>{l.name}</Text>
+                      <Text className="text-textMuted text-xs">{formatNaira(l.unitPriceKobo)} each</Text>
+                    </View>
+                    <View className="flex-row items-center bg-gray-100 rounded-full px-1 py-1 mr-2">
+                      <Pressable
+                        onPress={() => setLineQty(l.uid, l.qty - 1)}
+                        disabled={l.qty <= 1}
+                        className="w-7 h-7 items-center justify-center active:opacity-50"
+                        style={{ opacity: l.qty <= 1 ? 0.35 : 1 }}
+                        hitSlop={4}
+                      >
+                        <Minus size={15} color={designColors.text} />
+                      </Pressable>
+                      <Text className="text-text text-base font-semibold w-7 text-center">{l.qty}</Text>
+                      <Pressable
+                        onPress={() => setLineQty(l.uid, l.qty + 1)}
+                        className="w-7 h-7 items-center justify-center active:opacity-50"
+                        hitSlop={4}
+                      >
+                        <Plus size={15} color={designColors.text} />
+                      </Pressable>
+                    </View>
+                    <Text className="text-text text-sm font-medium w-24 text-right">
+                      {formatNaira(l.unitPriceKobo * l.qty)}
+                    </Text>
+                    <Pressable
+                      onPress={() => removeLine(l.uid)}
+                      className="w-8 h-8 items-center justify-center ml-1 active:opacity-50"
+                      hitSlop={4}
+                    >
+                      <X size={16} color={designColors.textMuted} strokeWidth={2} />
+                    </Pressable>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+
+            {!drafting && lines.length > 0 ? (
+              <>
+                <View className="flex-row items-center justify-between border-t border-border pt-3 mt-1">
+                  <Text className="text-text text-base font-semibold">Subtotal</Text>
+                  <Text className="text-text text-base font-semibold">{formatNaira(draftSubtotalKobo)}</Text>
+                </View>
+                <Pressable
+                  onPress={createFromDraft}
+                  disabled={creating}
+                  className={"rounded-full items-center justify-center py-3.5 mt-3 " + (creating ? "bg-borderStrong" : "bg-text")}
+                >
+                  <Text className="text-white text-base font-semibold">
+                    {creating ? "Creating..." : "Create order"}
+                  </Text>
+                </Pressable>
+                <Text className="text-textMuted text-xs text-center mt-2">
+                  Creates a pending (unpaid) order. Prices come from your catalog.
+                </Text>
+              </>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
