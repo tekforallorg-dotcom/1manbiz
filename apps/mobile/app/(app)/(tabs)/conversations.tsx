@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -21,6 +21,7 @@ export default function ConversationsScreen() {
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
   const [channelState, setChannelState] = useState<ChannelState>("unknown");
   const [error, setError] = useState<string | null>(null);
+  const [businessId, setBusinessId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -35,6 +36,7 @@ export default function ConversationsScreen() {
         setError("No business yet");
         return;
       }
+      setBusinessId(businessId);
 
       const { data: channel } = await supabase
         .from("channel_accounts")
@@ -61,6 +63,19 @@ export default function ConversationsScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // Live updates: any conversation change for this business refetches the list
+  // silently so order and unread badges stay current without a manual refresh.
+  useEffect(() => {
+    if (!businessId) return;
+    const channel = supabase
+      .channel(`conversations:${businessId}`)
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "conversations", filter: `business_id=eq.${businessId}` },
+        () => { fetchConversations(businessId).then(setConversations).catch(() => {}); })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [businessId]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);

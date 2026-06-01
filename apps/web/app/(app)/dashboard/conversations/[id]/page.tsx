@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
-import { MessageBubble } from "@/components/message-bubble";
 import { ReplyComposer } from "@/components/reply-composer";
+import { ThreadMessages } from "./thread-messages";
 import {
   getConversationHeader,
   getMessages,
@@ -63,17 +63,7 @@ export default async function ConversationThreadPage({ params }: PageProps) {
         </div>
       </header>
 
-      <div className="overflow-hidden rounded-3xl bg-white p-4 ring-1 ring-black/[0.04] sm:p-6">
-        {messages.length === 0 ? (
-          <p className="py-10 text-center text-sm text-text-muted">No messages yet.</p>
-        ) : (
-          <ol className="space-y-3">
-            {messages.map((m) => (
-              <MessageBubble key={m.id} message={m} />
-            ))}
-          </ol>
-        )}
-      </div>
+      <ThreadMessages conversationId={id} initialMessages={messages} />
 
       <ReplyComposer conversationId={id} />
     </div>

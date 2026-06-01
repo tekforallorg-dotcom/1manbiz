@@ -98,6 +98,39 @@ export default function ConversationThreadScreen() {
     };
   }, []);
 
+  // Live updates: stream inbound messages + outbound status changes for this
+  // conversation. Dedupe by id so our optimistic send (already swapped for the
+  // server row) is not appended twice when its INSERT event arrives.
+  useEffect(() => {
+    if (!id) return;
+    const mapRow = (r: Record<string, unknown>): MessageRow => ({
+      id: r.id as string,
+      direction: r.direction as MessageRow["direction"],
+      sender_role: r.sender_role as MessageRow["sender_role"],
+      body_text: (r.body_text as string | null) ?? null,
+      media_url: (r.media_url as string | null) ?? null,
+      media_type: (r.media_type as string | null) ?? null,
+      sent_at: r.sent_at as string,
+      meta_status: (r.meta_status as string | null) ?? null,
+    });
+    const channel = supabase
+      .channel(`messages:${id}`)
+      .on("postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${id}` },
+        (payload) => {
+          const row = mapRow(payload.new as Record<string, unknown>);
+          setMessages((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]));
+        })
+      .on("postgres_changes",
+        { event: "UPDATE", schema: "public", table: "messages", filter: `conversation_id=eq.${id}` },
+        (payload) => {
+          const row = mapRow(payload.new as Record<string, unknown>);
+          setMessages((prev) => prev.map((m) => (m.id === row.id ? row : m)));
+        })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [id]);
+
   const canSend = draft.trim().length > 0 && !sending && !!id;
 
   async function handleSend() {
