@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 
 import { ReplyComposer } from "@/components/reply-composer";
 import { ThreadMessages } from "./thread-messages";
+import { OrderDraftPanel } from "./order-draft-panel";
 import {
   getConversationHeader,
   getMessages,
@@ -64,6 +65,8 @@ export default async function ConversationThreadPage({ params }: PageProps) {
       </header>
 
       <ThreadMessages conversationId={id} initialMessages={messages} />
+
+      <OrderDraftPanel conversationId={id} />
 
       <ReplyComposer conversationId={id} />
     </div>
