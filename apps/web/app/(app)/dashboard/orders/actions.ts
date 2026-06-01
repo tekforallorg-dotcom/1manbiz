@@ -207,3 +207,175 @@ export async function markOrderPaidAction(orderId: string): Promise<OrderTransit
 export async function cancelOrderAction(orderId: string): Promise<OrderTransitionResult> {
   return transitionOrderStatus(orderId, "cancelled");
 }
+
+export type CreateFromProposalResult =
+  | { ok: true; orderId: string }
+  | { ok: false; error: string };
+
+type ProposalItemInput = { productId: string; quantity: number };
+
+/**
+ * Create a pending order from an AI chat proposal (3H.2).
+ *
+ * Mirrors createOrderAction's write path exactly (auth -> business ->
+ * re-resolve prices from catalog -> insert order + items -> orphan recovery)
+ * but resolves the customer from the conversation instead of a form field,
+ * and RETURNS the new order id instead of redirecting so the client panel can
+ * navigate. The vendor confirms; this never touches payment. Client-supplied
+ * prices are ignored entirely - only productId + quantity are trusted, and the
+ * order is always created as pending.
+ */
+export async function createOrderFromProposalAction(input: {
+  conversationId: string;
+  items: ProposalItemInput[];
+  notes?: string | null;
+}): Promise<CreateFromProposalResult> {
+  const supabase = await createClient();
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "You need to be signed in." };
+  }
+
+  const { data: business, error: businessError } = await supabase
+    .from("businesses")
+    .select("id")
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (businessError || !business) {
+    console.error("[orders] proposal: resolve business failed", businessError);
+    return { ok: false, error: "No business found for this account." };
+  }
+
+  const conversationId = String(input.conversationId ?? "").trim();
+  if (!conversationId) return { ok: false, error: "Missing conversation." };
+
+  const { data: convo, error: convoError } = await supabase
+    .from("conversations")
+    .select("id, customer_id, contact_phone_e164")
+    .eq("id", conversationId)
+    .eq("business_id", business.id)
+    .maybeSingle();
+  if (convoError) {
+    console.error("[orders] proposal: convo lookup failed", convoError);
+    return { ok: false, error: "Could not load the conversation." };
+  }
+  if (!convo) return { ok: false, error: "Conversation not found." };
+
+  const submittedItems: ProposalItemInput[] = (Array.isArray(input.items) ? input.items : [])
+    .filter((it) => it && typeof it === "object")
+    .map((it) => ({
+      productId: String(it.productId ?? ""),
+      quantity: Math.max(1, Math.floor(Number(it.quantity ?? 0))),
+    }))
+    .filter((it) => it.productId && it.quantity > 0);
+
+  if (submittedItems.length === 0) {
+    return { ok: false, error: "Add at least one item before creating the order." };
+  }
+
+  let customerId: string | null = convo.customer_id ?? null;
+
+  if (!customerId) {
+    const phone = (convo.contact_phone_e164 ?? "").trim();
+    if (!phone) {
+      return { ok: false, error: "This chat has no linked customer yet. Open it once to link the contact, then retry." };
+    }
+    const { data: existing } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("business_id", business.id)
+      .eq("phone_e164", phone)
+      .maybeSingle();
+    if (existing) {
+      customerId = existing.id;
+    } else {
+      const { data: createdCustomer, error: custErr } = await supabase
+        .from("customers")
+        .insert({ business_id: business.id, name: phone, phone_e164: phone })
+        .select("id")
+        .single();
+      if (custErr || !createdCustomer) {
+        console.error("[orders] proposal: customer create failed", custErr);
+        return { ok: false, error: "Could not link a customer for this order." };
+      }
+      customerId = createdCustomer.id;
+    }
+  }
+
+  const productIds = submittedItems.map((it) => it.productId);
+  const { data: products, error: productsError } = await supabase
+    .from("products")
+    .select("id, name, price_kobo, status")
+    .eq("business_id", business.id)
+    .in("id", productIds);
+  if (productsError || !products) {
+    console.error("[orders] proposal: product fetch failed", productsError);
+    return { ok: false, error: "Could not load products." };
+  }
+
+  const productsById = new Map(products.map((p) => [p.id, p]));
+  const missing = submittedItems.filter((it) => !productsById.has(it.productId));
+  if (missing.length > 0) {
+    return { ok: false, error: "Some products are no longer available. Re-draft and try again." };
+  }
+
+  let subtotalKobo = 0;
+  const orderItemsToInsert: Array<{
+    product_id: string;
+    name_snapshot: string;
+    price_kobo_snapshot: number;
+    quantity: number;
+    line_total_kobo: number;
+  }> = [];
+
+  for (const it of submittedItems) {
+    const product = productsById.get(it.productId);
+    if (!product) continue;
+    const lineTotal = product.price_kobo * it.quantity;
+    subtotalKobo += lineTotal;
+    orderItemsToInsert.push({
+      product_id: product.id,
+      name_snapshot: product.name,
+      price_kobo_snapshot: product.price_kobo,
+      quantity: it.quantity,
+      line_total_kobo: lineTotal,
+    });
+  }
+
+  const notes = (input.notes ?? "").toString().trim().slice(0, 1000) || null;
+
+  const { data: orderRow, error: orderError } = await supabase
+    .from("orders")
+    .insert({
+      business_id: business.id,
+      customer_id: customerId,
+      source: "whatsapp_ai",
+      status: "pending",
+      subtotal_kobo: subtotalKobo,
+      currency: "NGN",
+      notes,
+    })
+    .select("id")
+    .single();
+
+  if (orderError || !orderRow) {
+    console.error("[orders] proposal: insert order failed", orderError);
+    return { ok: false, error: "Could not create order: " + (orderError?.message ?? "unknown") };
+  }
+
+  const rowsWithOrderId = orderItemsToInsert.map((row) => ({ ...row, order_id: orderRow.id }));
+  const { error: itemsInsertError } = await supabase.from("order_items").insert(rowsWithOrderId);
+
+  if (itemsInsertError) {
+    console.error("[orders] proposal: insert order_items failed", itemsInsertError);
+    await supabase.from("orders").delete().eq("id", orderRow.id);
+    return { ok: false, error: "Could not save order items: " + itemsInsertError.message };
+  }
+
+  console.log("[orders] proposal: created", { orderId: orderRow.id, items: orderItemsToInsert.length, subtotalKobo });
+
+  revalidatePath("/dashboard/orders");
+  revalidatePath("/dashboard");
+  return { ok: true, orderId: orderRow.id };
+}
