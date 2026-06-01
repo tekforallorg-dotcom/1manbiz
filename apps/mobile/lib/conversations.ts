@@ -19,6 +19,7 @@ export interface ConversationListItem {
 export interface ConversationHeader {
   id: string;
   business_id: string;
+  customer_id: string | null;
   customer_name: string | null;
   contact_phone_e164: string | null;
   channel: string;
@@ -75,7 +76,7 @@ export async function fetchConversationHeader(
   const { data, error } = await supabase
     .from("conversations")
     .select(
-      `id, business_id, contact_phone_e164, channel, status,
+      `id, business_id, customer_id, contact_phone_e164, channel, status,
        customer:customers(name)`,
     )
     .eq("id", conversationId)
@@ -88,6 +89,7 @@ export async function fetchConversationHeader(
   return {
     id: data.id,
     business_id: data.business_id,
+    customer_id: (data as any).customer_id ?? null,
     customer_name: customer?.name ?? null,
     contact_phone_e164: data.contact_phone_e164,
     channel: data.channel,

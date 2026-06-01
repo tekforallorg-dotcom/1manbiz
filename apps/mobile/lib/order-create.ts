@@ -12,6 +12,7 @@ export interface CreateOrderInput {
   customerId: string;
   items: NewOrderLine[];
   notes?: string;
+  source?: "manual" | "whatsapp_ai";
 }
 
 // Creates an order + its line items. Supabase JS lacks transactions, so we do
@@ -35,7 +36,7 @@ export async function createOrder(
     .insert({
       business_id: input.businessId,
       customer_id: input.customerId,
-      source: "manual",
+      source: input.source ?? "manual",
       status: "pending",
       subtotal_kobo: subtotalKobo,
       notes: input.notes?.trim() || null,
