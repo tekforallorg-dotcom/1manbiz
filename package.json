@@ -12,7 +12,8 @@
     "start": "pnpm --filter web start",
     "web:dev": "pnpm --filter web dev",
     "web:build": "pnpm --filter web build",
-    "mobile:start": "pnpm --filter mobile start"
+    "mobile:start": "pnpm --filter mobile start",
+    "verify": "pnpm --filter web exec tsc --noEmit && pnpm --filter mobile exec tsc --noEmit && pnpm --filter web exec next lint"
   },
   "packageManager": "pnpm@9.12.0",
   "pnpm": {

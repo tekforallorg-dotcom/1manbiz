@@ -9,19 +9,12 @@ import {
   fetchOrderDetail,
   markOrderPaid,
   type OrderDetail,
-  type OrderSource,
 } from "../../../lib/order-detail";
 import { formatNaira, formatDateTime } from "../../../lib/format";
 import { ScreenHeader } from "../../../components/screen-header";
 import { LineItemRow } from "../../../components/line-item-row";
 import { colors as designColors } from "@1manbiz/design";
-
-const SOURCE_LABEL: Record<OrderSource, string> = {
-  manual: "Captured manually",
-  whatsapp: "WhatsApp",
-  instagram: "Instagram",
-  catalogue: "Online catalogue",
-};
+import { ORDER_SOURCE_LABEL } from "@1manbiz/shared";
 
 const STATUS_STYLES = {
   paid:      { bg: "bg-green-50",  text: "text-green-700", label: "Paid" },
@@ -145,7 +138,7 @@ export default function OrderDetailScreen() {
             {order.customer_name ?? "Walk-in customer"}
           </Text>
           {order.customer_phone ? (
-            <Text className="text-textMuted text-sm mt-0.5">+{order.customer_phone}</Text>
+            <Text className="text-textMuted text-sm mt-0.5">{order.customer_phone}</Text>
           ) : null}
         </View>
 
@@ -194,7 +187,7 @@ export default function OrderDetailScreen() {
             ) : null}
             <View className="flex-row justify-between py-1">
               <Text className="text-textMuted text-sm">Source</Text>
-              <Text className="text-text text-sm font-medium">{SOURCE_LABEL[order.source]}</Text>
+              <Text className="text-text text-sm font-medium">{ORDER_SOURCE_LABEL[order.source]}</Text>
             </View>
           </View>
         </View>

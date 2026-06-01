@@ -1,7 +1,7 @@
 import { supabase } from "./supabase";
 import type { OrderStatus } from "./dashboard";
 
-export type OrderSource = "manual" | "whatsapp" | "instagram" | "catalogue";
+export type OrderSource = "manual" | "whatsapp" | "instagram" | "catalogue" | "whatsapp_ai";
 
 export interface OrderLineItem {
   id: string;
