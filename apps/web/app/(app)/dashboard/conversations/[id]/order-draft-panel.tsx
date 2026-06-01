@@ -18,6 +18,7 @@ type DraftLine = {
   name: string;
   qty: number;
   unitPriceKobo: number;
+  stockQty: number;
 };
 
 type State =
@@ -62,6 +63,7 @@ export function OrderDraftPanel({ conversationId }: Props) {
           name: li.name,
           qty: li.qty,
           unitPriceKobo: li.unitPriceKobo,
+          stockQty: li.stockQty,
         }))
       );
       const hint = proposal.customerHint;
@@ -165,6 +167,13 @@ export function OrderDraftPanel({ conversationId }: Props) {
                   <p className="text-[12px] tabular-nums text-text-muted">
                     {formatNairaFromKobo(l.unitPriceKobo)} each
                   </p>
+                  {l.qty > l.stockQty ? (
+                    <p className="mt-0.5 text-[12px] text-warning">
+                      {l.stockQty === 0
+                        ? "Out of stock"
+                        : "Only " + l.stockQty + " in stock"}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <div className="flex items-center rounded-full ring-1 ring-black/[0.08]">
