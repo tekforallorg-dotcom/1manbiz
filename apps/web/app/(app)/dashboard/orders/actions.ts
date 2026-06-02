@@ -379,3 +379,114 @@ export async function createOrderFromProposalAction(input: {
   revalidatePath("/dashboard");
   return { ok: true, orderId: orderRow.id };
 }
+
+import { headers } from "next/headers";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { initPaymentForOrder } from "@/lib/payments/init";
+import { sendWhatsAppText } from "@/lib/whatsapp/send";
+import { formatNairaFromKobo } from "@/lib/format";
+
+export type SendPaymentLinkResult =
+  | { ok: true; sent: boolean; url: string; reference: string }
+  | { ok: false; error: string };
+
+/**
+ * Generate a Paystack payment link for a pending order and deliver it.
+ *
+ * If the order's customer has a WhatsApp conversation with a connected channel,
+ * the link is auto-sent into that thread AS THE VENDOR (sender_role 'vendor') --
+ * payment requests come from the business, not a bot. If there is no
+ * conversation (e.g. a manually-created order), the link is returned for the
+ * vendor to copy and share however they like.
+ */
+export async function sendPaymentLinkAction(
+  orderId: string,
+): Promise<SendPaymentLinkResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? "https";
+  const origin = host ? proto + "://" + host : "https://1manbiz.vercel.app";
+
+  const init = await initPaymentForOrder(user.id, orderId, origin);
+  if (!init.ok) return { ok: false, error: init.error };
+
+  if (init.customerId) {
+    const admin = createAdminClient();
+    const { data: convo } = await admin
+      .from("conversations")
+      .select("id, contact_phone_e164, channel_account_id")
+      .eq("customer_id", init.customerId)
+      .maybeSingle();
+
+    if (convo?.channel_account_id && convo.contact_phone_e164) {
+      const { data: channel } = await admin
+        .from("channel_accounts")
+        .select("meta_phone_number_id, access_token, status")
+        .eq("id", convo.channel_account_id)
+        .maybeSingle();
+
+      if (
+        channel &&
+        channel.status === "connected" &&
+        channel.meta_phone_number_id &&
+        channel.access_token
+      ) {
+        const message =
+          "Here is your secure payment link for " +
+          formatNairaFromKobo(init.amountKobo) +
+          ":\n" +
+          init.authorizationUrl;
+
+        const sendResult = await sendWhatsAppText({
+          phoneNumberId: channel.meta_phone_number_id,
+          accessToken: channel.access_token,
+          toE164: convo.contact_phone_e164,
+          body: message,
+        });
+
+        if (sendResult.ok) {
+          const sentAt = new Date().toISOString();
+          await admin.from("messages").insert({
+            conversation_id: convo.id,
+            direction: "out",
+            sender_role: "vendor",
+            body_text: message,
+            sent_at: sentAt,
+            meta_message_id: sendResult.wamid,
+            meta_status: "sent",
+          });
+          await admin
+            .from("conversations")
+            .update({
+              last_message_at: sentAt,
+              last_message_preview: "Payment link sent",
+              last_message_direction: "out",
+            })
+            .eq("id", convo.id);
+
+          revalidatePath("/dashboard/orders/" + orderId);
+          return {
+            ok: true,
+            sent: true,
+            url: init.authorizationUrl,
+            reference: init.reference,
+          };
+        }
+      }
+    }
+  }
+
+  revalidatePath("/dashboard/orders/" + orderId);
+  return {
+    ok: true,
+    sent: false,
+    url: init.authorizationUrl,
+    reference: init.reference,
+  };
+}

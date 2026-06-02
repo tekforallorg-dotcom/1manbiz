@@ -1,14 +1,43 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, X } from "lucide-react";
+import { Check, X, Link2 } from "lucide-react";
 
-import { cancelOrderAction, markOrderPaidAction } from "../actions";
+import { cancelOrderAction, markOrderPaidAction, sendPaymentLinkAction } from "../actions";
 
 export function OrderActionsBar({ orderId }: { orderId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [confirmKind, setConfirmKind] = useState<"paid" | "cancel" | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [linkResult, setLinkResult] = useState<{ sent: boolean; url: string } | null>(null);
+  const [linkPending, setLinkPending] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  function sendPaymentLink() {
+    setError(null);
+    setLinkResult(null);
+    setLinkPending(true);
+    startTransition(async () => {
+      const result = await sendPaymentLinkAction(orderId);
+      setLinkPending(false);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setLinkResult({ sent: result.sent, url: result.url });
+    });
+  }
+
+  async function copyLink() {
+    if (!linkResult) return;
+    try {
+      await navigator.clipboard.writeText(linkResult.url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard unavailable; the URL is shown for manual copy.
+    }
+  }
 
   function requestConfirm(kind: "paid" | "cancel") {
     setError(null);
@@ -69,8 +98,30 @@ export function OrderActionsBar({ orderId }: { orderId: string }) {
         <div className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">{error}</div>
       ) : null}
 
+      {linkResult ? (
+        <div className="mt-4 rounded-xl bg-brand-soft px-4 py-3 ring-1 ring-brand-primary/20">
+          <p className="text-sm font-medium text-foreground">
+            {linkResult.sent ? "Payment link sent on WhatsApp." : "Payment link ready."}
+          </p>
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              readOnly
+              value={linkResult.url}
+              className="min-w-0 flex-1 truncate rounded-lg bg-white px-3 py-2 text-xs text-text-secondary ring-1 ring-black/[0.06]"
+            />
+            <button type="button" onClick={copyLink} className="shrink-0 rounded-lg bg-foreground px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-foreground/90">
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="mt-5 flex flex-wrap items-center gap-3">
-        <button type="button" onClick={() => requestConfirm("paid")} className="inline-flex items-center gap-1.5 rounded-full bg-brand-primary px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-dark">
+        <button type="button" onClick={sendPaymentLink} disabled={linkPending} className="inline-flex items-center gap-1.5 rounded-full bg-brand-primary px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-dark disabled:opacity-50">
+          <Link2 size={14} strokeWidth={2.5} />
+          {linkPending ? "Generating..." : "Send payment link"}
+        </button>
+        <button type="button" onClick={() => requestConfirm("paid")} className="inline-flex items-center gap-1.5 rounded-full bg-surface-muted px-5 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-muted/70">
           <Check size={14} strokeWidth={2.5} />
           Mark as paid
         </button>
