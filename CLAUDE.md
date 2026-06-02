@@ -378,6 +378,11 @@ Permanent record of unexpected setup hurdles and how they were resolved. Future 
 19. **`unknown` over `any`.** ESLint blocks `any` even with a rationale. Use `unknown` / `Record<string, unknown>` + narrowing, including in catch params and realtime payloads.
 20. **`next lint` deprecated in Next 16.** Before any Next 16 bump, migrate the pre-push gate to the ESLint CLI: `npx @next/codemod@canary next-lint-to-eslint-cli .`
 
+### Entries 21—22 (resolved across the AI-parser + product-edit slices)
+
+21. **Selective `git add <list>` leaks files (hit 3x in one session).** When edits span more files than the explicit `git add` list, some changes stay unstaged. `main` then fails a fresh-clone `tsc` (a committed file references an uncommitted edit) even though local `pnpm verify` passes, because the working tree still holds the unstaged edits. Hit 3x: the 3H.3 thread screen, the Chunk 1 web migration files, and the two mobile libs (order-create source param + conversation customer_id). Rule: before every commit run `git add -A` then `git status --short` and eyeball that every intended file is staged. Never hand-type a file list.
+22. **AI order parser is customer+vendor role-aware, customer-as-buyer.** `/api/ai/parse-order` feeds the model a role-labelled transcript of BOTH sides (`Customer:` / `Shop:`, excluding prior `ai`-role drafts) and extracts what the CUSTOMER is buying, using shop lines as corroboration. Consequence: vendor-typed-as-buyer text does NOT draft an order (the shop is not the buyer), so dogfooding must use real inbound customer messages. Tooling notes from the same arc: Supabase MCP multi-statement SQL returns only the LAST statement's rows (run constraint/policy/column checks as single statements); and `esbuild --bundle=false` syntax-checks TS/TSX without resolving imports, so bare `@1manbiz/*` and `@/` imports need no stubbing.
+
 ---
 
 ## 12. Final Slice Footer Template
@@ -402,4 +407,4 @@ Stop here for review.
 
 ---
 
-_Last updated: 2026-06-01, end of slice 3G.E (Supabase Realtime), HEAD on main `f3709b8`. Maintained by Claude on owner request._
+_Last updated: 2026-06-01, end of web product-edit slice (parity for mobile MOB-7), HEAD on main `832acd4`. Maintained by Claude on owner request._
