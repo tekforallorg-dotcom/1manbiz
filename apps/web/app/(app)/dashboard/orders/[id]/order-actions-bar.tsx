@@ -101,7 +101,14 @@ export function OrderActionsBar({ orderId }: { orderId: string }) {
       {linkResult ? (
         <div className="mt-4 rounded-xl bg-brand-soft px-4 py-3 ring-1 ring-brand-primary/20">
           <p className="text-sm font-medium text-foreground">
-            {linkResult.sent ? "Payment link sent on WhatsApp." : "Payment link ready."}
+            {linkResult.sent
+              ? "Payment link sent to the customer's WhatsApp."
+              : "Payment link ready to share."}
+          </p>
+          <p className="mt-0.5 text-xs text-text-secondary">
+            {linkResult.sent
+              ? "If they don't receive it (WhatsApp only delivers within 24h of their last message), copy and send it yourself."
+              : "Copy this link and send it to your customer."}
           </p>
           <div className="mt-2 flex items-center gap-2">
             <input

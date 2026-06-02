@@ -64,6 +64,18 @@ export default async function OrderDetailPage(props: { params: Promise<{ id: str
   const customerPhone = customer?.phone_e164 ?? null;
   const receiptCode = order.receipt_code as string | null;
 
+  // Prefer the in-app conversation when one exists for this customer; only fall
+  // back to a wa.me deep link if there is no thread to open.
+  let conversationId: string | null = null;
+  if (customer?.id) {
+    const { data: convo } = await supabase
+      .from("conversations")
+      .select("id")
+      .eq("customer_id", customer.id)
+      .maybeSingle();
+    conversationId = convo?.id ?? null;
+  }
+
   const whatsappLink = customerPhone
     ? buildWhatsAppLink(customerPhone, "Hi " + customerName + ", regarding your order: ")
     : null;
@@ -92,9 +104,14 @@ export default async function OrderDetailPage(props: { params: Promise<{ id: str
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <p className="text-base font-medium text-foreground">{customerName}</p>
             {customerPhone ? (
-              <p className="text-sm tabular-nums text-text-muted">+{customerPhone}</p>
+              <p className="text-sm tabular-nums text-text-muted">{customerPhone}</p>
             ) : null}
-            {whatsappLink ? (
+            {conversationId ? (
+              <Link href={`/dashboard/conversations/${conversationId}`} className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-foreground/90">
+                <MessageCircle size={12} strokeWidth={2.25} />
+                Chat
+              </Link>
+            ) : whatsappLink ? (
               <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-foreground/90">
                 <MessageCircle size={12} strokeWidth={2.25} />
                 Chat
