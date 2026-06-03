@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { House, MessageCircle, Receipt, Package, Settings as SettingsIcon } from "lucide-react-native";
+import { House, MessageCircle, Receipt, Calendar, Package, Settings as SettingsIcon } from "lucide-react-native";
 import { colors as designColors } from "@1manbiz/design";
 
 const COLORS = {
@@ -42,6 +42,13 @@ export default function TabsLayout() {
         options={{
           title: "Orders",
           tabBarIcon: ({ color, size }) => <Receipt size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="bookings"
+        options={{
+          title: "Bookings",
+          tabBarIcon: ({ color, size }) => <Calendar size={size} color={color} />,
         }}
       />
       <Tabs.Screen
