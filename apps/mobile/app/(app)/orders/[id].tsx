@@ -12,6 +12,7 @@ import {
 } from "../../../lib/order-detail";
 import { formatNaira, formatDateTime } from "../../../lib/format";
 import { ScreenHeader } from "../../../components/screen-header";
+import { ConfirmSheet } from "../../../components/confirm-sheet";
 import { LineItemRow } from "../../../components/line-item-row";
 import { colors as designColors } from "@1manbiz/design";
 import { ORDER_SOURCE_LABEL } from "@1manbiz/shared";
@@ -30,6 +31,7 @@ export default function OrderDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [marking, setMarking] = useState(false);
+  const [confirmingPaid, setConfirmingPaid] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -52,35 +54,24 @@ export default function OrderDetailScreen() {
     }, [load]),
   );
 
-  const handleMarkPaid = () => {
+  const doMarkPaid = async () => {
     if (!order) return;
-    Alert.alert(
-      "Mark as paid?",
-      `Confirm that ${order.customer_name ?? "the customer"} has paid ${formatNaira(order.subtotal_kobo)}.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Mark as paid",
-          style: "default",
-          onPress: async () => {
-            setMarking(true);
-            const original = order;
-            setOrder({ ...order, status: "paid", paid_at: new Date().toISOString() });
+    setMarking(true);
+    const original = order;
+    setOrder({ ...order, status: "paid", paid_at: new Date().toISOString() });
 
-            const result = await markOrderPaid(order.id);
-            if (!result.ok) {
-              setOrder(original);
-              setMarking(false);
-              Alert.alert("Could not mark as paid", result.error ?? "Please try again.");
-              return;
-            }
-            const refreshed = await fetchOrderDetail(order.id);
-            if (refreshed) setOrder(refreshed);
-            setMarking(false);
-          },
-        },
-      ],
-    );
+    const result = await markOrderPaid(order.id);
+    if (!result.ok) {
+      setOrder(original);
+      setMarking(false);
+      setConfirmingPaid(false);
+      Alert.alert("Could not mark as paid", result.error ?? "Please try again.");
+      return;
+    }
+    const refreshed = await fetchOrderDetail(order.id);
+    if (refreshed) setOrder(refreshed);
+    setMarking(false);
+    setConfirmingPaid(false);
   };
 
   const handleViewReceipt = () => {
@@ -196,7 +187,7 @@ export default function OrderDetailScreen() {
       <View className="absolute left-0 right-0 bottom-0 px-6 pb-6 pt-3 bg-background border-t border-gray-100">
         {order.status === "pending" ? (
           <Pressable
-            onPress={handleMarkPaid}
+            onPress={() => setConfirmingPaid(true)}
             disabled={marking}
             className="bg-primary rounded-2xl py-4 items-center active:opacity-80"
           >
@@ -218,6 +209,20 @@ export default function OrderDetailScreen() {
           </Pressable>
         ) : null}
       </View>
+
+      <ConfirmSheet
+        visible={confirmingPaid}
+        title="Mark as paid?"
+        body={
+          order
+            ? "Confirm that " + (order.customer_name ?? "the customer") + " has paid " + formatNaira(order.subtotal_kobo) + "."
+            : undefined
+        }
+        confirmLabel="Mark as paid"
+        pending={marking}
+        onConfirm={doMarkPaid}
+        onCancel={() => setConfirmingPaid(false)}
+      />
     </SafeAreaView>
   );
 }
