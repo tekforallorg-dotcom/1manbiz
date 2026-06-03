@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 import { Label } from "@/components/ui/label";
 import { createBookingAction, type CreateBookingState } from "../actions";
@@ -60,9 +61,9 @@ export function BookingForm(props: { customers: Customer[]; products: Product[] 
         <div className="rounded-xl bg-warning/10 px-4 py-3 text-sm text-warning ring-1 ring-warning/20">
           <p className="font-medium">Booking created.</p>
           <p className="mt-0.5">{state.conflictWarning}</p>
-          <a href="/dashboard/bookings" className="mt-2 inline-block font-medium text-foreground underline">
+          <Link href="/dashboard/bookings" className="mt-2 inline-block font-medium text-foreground underline">
             View bookings
-          </a>
+          </Link>
         </div>
       ) : null}
 
