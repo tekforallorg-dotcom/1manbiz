@@ -176,3 +176,32 @@ export async function transitionBooking(
   }
   return { ok: true };
 }
+
+export interface UpdateBookingInput {
+  title: string;
+  startsAtIso: string;
+  notes?: string | null;
+}
+
+// Edit a booking's title, start time, and notes (owner-scoped via RLS). Caller
+// must ensure the booking is still pending/confirmed; terminal bookings should
+// not reach here (the detail screen hides Edit for them). Customer/service are
+// intentionally not editable -- that is a cancel + rebook flow.
+export async function updateBooking(
+  id: string,
+  input: UpdateBookingInput,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const title = input.title.trim();
+  if (!title) return { ok: false, error: "Add a title." };
+  if (!input.startsAtIso) return { ok: false, error: "Pick a start time." };
+
+  const { error } = await supabase
+    .from("bookings")
+    .update({ title, starts_at: input.startsAtIso, notes: input.notes?.trim() || null })
+    .eq("id", id);
+  if (error) {
+    console.error("[bookings] update failed", error);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}

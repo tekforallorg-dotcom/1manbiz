@@ -93,7 +93,17 @@ export default async function BookingDetailPage({ params }: { params: Promise<Pa
             <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-text-muted">Booking</p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{booking.title}</h1>
           </div>
-          <StatusBadge status={status} />
+          <div className="flex shrink-0 items-center gap-3">
+            {isActionable ? (
+              <Link
+                href={"/dashboard/bookings/" + (booking.id as string) + "/edit"}
+                className="text-sm font-medium text-brand-primary transition-colors hover:text-brand-dark"
+              >
+                Edit
+              </Link>
+            ) : null}
+            <StatusBadge status={status} />
+          </div>
         </div>
 
         <dl className="mt-6 space-y-4 border-t border-border pt-6">

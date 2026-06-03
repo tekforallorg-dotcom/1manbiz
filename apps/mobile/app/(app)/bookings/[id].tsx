@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { View, Text, ScrollView, ActivityIndicator, Pressable, Alert } from "react-native";
 import { ConfirmSheet } from "../../../components/confirm-sheet";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import {
   fetchBookingDetail,
   transitionBooking,
@@ -39,6 +39,7 @@ function formatFull(startsAt: string, endsAt: string | null): string {
 
 export default function BookingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const [booking, setBooking] = useState<BookingDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -116,8 +117,15 @@ export default function BookingDetailScreen() {
       <ScrollView contentContainerStyle={{ paddingBottom: 140, paddingHorizontal: 24 }}>
         <View className="pt-2 flex-row items-start justify-between">
           <Text className="text-text text-3xl font-bold flex-1 mr-3" numberOfLines={2}>{booking.title}</Text>
-          <View className={`${s.bg} px-2.5 py-1 rounded-full`}>
-            <Text className={`${s.text} text-xs font-medium`}>{s.label}</Text>
+          <View className="items-end">
+            <View className={`${s.bg} px-2.5 py-1 rounded-full`}>
+              <Text className={`${s.text} text-xs font-medium`}>{s.label}</Text>
+            </View>
+            {isActionable ? (
+              <Pressable onPress={() => router.push({ pathname: "/bookings/edit", params: { id: booking.id } })} className="mt-2 active:opacity-60">
+                <Text className="text-primary text-sm font-medium">Edit</Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
 

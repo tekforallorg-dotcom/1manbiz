@@ -219,3 +219,85 @@ export async function completeBookingAction(bookingId: string): Promise<BookingT
 export async function cancelBookingAction(bookingId: string): Promise<BookingTransitionResult> {
   return transitionBookingStatus(bookingId, "cancelled");
 }
+
+export type UpdateBookingState = {
+  status: "idle" | "error" | "success";
+  error: string | null;
+  fieldErrors?: Record<string, string>;
+};
+
+// Edit a booking's title, start time, and notes. Allowed only while the booking
+// is pending or confirmed -- cancelled/completed bookings are terminal history
+// and must not be rewritten. Customer and service are intentionally NOT editable
+// here (that is a "cancel + rebook" flow); this keeps the edit a pure, low-risk
+// UPDATE through the same owner-scoped RLS as every other booking write.
+export async function updateBookingAction(
+  bookingId: string,
+  _prev: UpdateBookingState,
+  formData: FormData,
+): Promise<UpdateBookingState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { status: "error", error: "Not signed in." };
+
+  const { data: business, error: businessError } = await supabase
+    .from("businesses")
+    .select("id")
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (businessError || !business) {
+    console.error("[bookings] resolve business failed", businessError);
+    return { status: "error", error: "No business found for this account." };
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from("bookings")
+    .select("id, status")
+    .eq("id", bookingId)
+    .eq("business_id", business.id)
+    .maybeSingle();
+  if (existingError || !existing) {
+    return { status: "error", error: "Booking not found." };
+  }
+  if (existing.status === "cancelled" || existing.status === "completed") {
+    return { status: "error", error: "This booking can no longer be edited." };
+  }
+
+  const title = String(formData.get("title") ?? "").trim();
+  const startsAtRaw = String(formData.get("starts_at") ?? "").trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  const fieldErrors: Record<string, string> = {};
+  if (!title) fieldErrors.title = "Add a title";
+  if (!startsAtRaw) fieldErrors.starts_at = "Pick a start time";
+
+  let startsAtIso = "";
+  if (startsAtRaw) {
+    const d = new Date(startsAtRaw);
+    if (Number.isNaN(d.getTime())) {
+      fieldErrors.starts_at = "Invalid date/time";
+    } else {
+      startsAtIso = d.toISOString();
+    }
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return { status: "error", error: "Please fix the highlighted fields.", fieldErrors };
+  }
+
+  const { error: updateError } = await supabase
+    .from("bookings")
+    .update({ title, starts_at: startsAtIso, notes: notes || null })
+    .eq("id", bookingId)
+    .eq("business_id", business.id);
+  if (updateError) {
+    console.error("[bookings] update failed", updateError);
+    return { status: "error", error: updateError.message };
+  }
+
+  revalidatePath("/dashboard/bookings");
+  revalidatePath("/dashboard/bookings/" + bookingId);
+  return { status: "success", error: null };
+}
