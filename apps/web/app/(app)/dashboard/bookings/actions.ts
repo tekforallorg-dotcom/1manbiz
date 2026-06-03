@@ -143,3 +143,79 @@ export async function createBookingAction(
     conflictWarning,
   };
 }
+
+export type BookingTransitionResult = { ok: true } | { ok: false; error: string };
+
+type NextBookingStatus = "confirmed" | "completed" | "cancelled";
+
+/**
+ * Transition a booking's status, owner-scoped, with lifecycle guards.
+ *
+ * Allowed: pending -> confirmed | cancelled; confirmed -> completed | cancelled.
+ * Terminal: completed and cancelled accept no further transitions. Mirrors the
+ * orders transitionOrderStatus pattern (guard rules + revalidate).
+ */
+async function transitionBookingStatus(
+  bookingId: string,
+  nextStatus: NextBookingStatus,
+): Promise<BookingTransitionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+
+  const { data: business } = await supabase
+    .from("businesses")
+    .select("id")
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (!business) return { ok: false, error: "No business" };
+
+  const { data: booking } = await supabase
+    .from("bookings")
+    .select("id, status")
+    .eq("id", bookingId)
+    .eq("business_id", business.id)
+    .maybeSingle();
+  if (!booking) return { ok: false, error: "Booking not found" };
+
+  const current = booking.status as string;
+  if (current === nextStatus) return { ok: true };
+
+  if (current === "cancelled") {
+    return { ok: false, error: "This booking was cancelled and can't be changed." };
+  }
+  if (current === "completed") {
+    return { ok: false, error: "This booking is already completed." };
+  }
+  if (nextStatus === "completed" && current !== "confirmed") {
+    return { ok: false, error: "Confirm the booking before marking it completed." };
+  }
+
+  const { error: updateError } = await supabase
+    .from("bookings")
+    .update({ status: nextStatus })
+    .eq("id", bookingId)
+    .eq("business_id", business.id);
+  if (updateError) {
+    console.error("[bookings] status update failed", updateError);
+    return { ok: false, error: updateError.message };
+  }
+
+  revalidatePath("/dashboard/bookings");
+  revalidatePath("/dashboard/bookings/" + bookingId);
+  return { ok: true };
+}
+
+export async function confirmBookingAction(bookingId: string): Promise<BookingTransitionResult> {
+  return transitionBookingStatus(bookingId, "confirmed");
+}
+
+export async function completeBookingAction(bookingId: string): Promise<BookingTransitionResult> {
+  return transitionBookingStatus(bookingId, "completed");
+}
+
+export async function cancelBookingAction(bookingId: string): Promise<BookingTransitionResult> {
+  return transitionBookingStatus(bookingId, "cancelled");
+}

@@ -22,17 +22,18 @@ function StatusBadge({ status }: { status: BookingStatus }) {
   );
 }
 
-function formatWhen(startsAt: string, endsAt: string | null): string {
+function formatWhen(startsAt: string, endsAt: string | null): { date: string; time: string } {
   const start = new Date(startsAt);
-  const datePart = start.toLocaleDateString("en-NG", {
+  const date = start.toLocaleDateString("en-NG", {
     weekday: "short",
     month: "short",
     day: "numeric",
   });
   const startTime = start.toLocaleTimeString("en-NG", { hour: "numeric", minute: "2-digit" });
-  if (!endsAt) return datePart + " at " + startTime;
-  const endTime = new Date(endsAt).toLocaleTimeString("en-NG", { hour: "numeric", minute: "2-digit" });
-  return datePart + ", " + startTime + " - " + endTime;
+  const time = endsAt
+    ? startTime + " - " + new Date(endsAt).toLocaleTimeString("en-NG", { hour: "numeric", minute: "2-digit" })
+    : startTime;
+  return { date, time };
 }
 
 export default async function BookingsPage() {
@@ -92,9 +93,15 @@ export default async function BookingsPage() {
                     </div>
                     <p className="mt-0.5 truncate text-xs text-text-muted">{customerName}</p>
                   </div>
-                  <p className="shrink-0 text-right text-xs font-medium tabular-nums text-text-secondary">
-                    {formatWhen(b.starts_at, b.ends_at)}
-                  </p>
+                  {(() => {
+                    const when = formatWhen(b.starts_at, b.ends_at);
+                    return (
+                      <div className="shrink-0 text-right">
+                        <p className="text-xs font-medium text-foreground">{when.date}</p>
+                        <p className="text-xs tabular-nums text-text-muted">{when.time}</p>
+                      </div>
+                    );
+                  })()}
                 </Link>
               </li>
             );
