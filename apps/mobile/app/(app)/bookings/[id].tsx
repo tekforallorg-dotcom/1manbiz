@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { View, Text, ScrollView, ActivityIndicator, Pressable, Alert } from "react-native";
+import { ConfirmSheet } from "../../../components/confirm-sheet";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
@@ -15,6 +16,14 @@ const STATUS_STYLES: Record<BookingStatus, { bg: string; text: string; label: st
   confirmed: { bg: "bg-green-50",  text: "text-green-700", label: "Confirmed" },
   cancelled: { bg: "bg-gray-100",  text: "text-gray-600",  label: "Cancelled" },
   completed: { bg: "bg-gray-100",  text: "text-gray-700",  label: "Completed" },
+};
+
+type TransitionKind = "confirmed" | "completed" | "cancelled";
+
+const TRANSITION_COPY: Record<TransitionKind, { title: string; body: string; confirm: string; destructive: boolean }> = {
+  confirmed: { title: "Confirm this booking?", body: "This marks the appointment as confirmed.", confirm: "Confirm", destructive: false },
+  completed: { title: "Mark completed?", body: "This marks the appointment as done.", confirm: "Mark completed", destructive: false },
+  cancelled: { title: "Cancel this booking?", body: "This marks the appointment as cancelled. This can't be undone.", confirm: "Cancel booking", destructive: true },
 };
 
 function formatFull(startsAt: string, endsAt: string | null): string {
@@ -34,6 +43,7 @@ export default function BookingDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [working, setWorking] = useState(false);
+  const [pendingTransition, setPendingTransition] = useState<TransitionKind | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -53,36 +63,24 @@ export default function BookingDetailScreen() {
     }, [load]),
   );
 
-  const runTransition = (next: "confirmed" | "completed" | "cancelled") => {
-    if (!booking) return;
-    const labels: Record<typeof next, { confirm: string; title: string; body: string; destructive: boolean }> = {
-      confirmed: { confirm: "Confirm", title: "Confirm this booking?", body: "This marks the appointment as confirmed.", destructive: false },
-      completed: { confirm: "Mark completed", title: "Mark completed?", body: "This marks the appointment as done.", destructive: false },
-      cancelled: { confirm: "Cancel booking", title: "Cancel this booking?", body: "This marks the appointment as cancelled. This can't be undone.", destructive: true },
-    };
-    const cfg = labels[next];
-    Alert.alert(cfg.title, cfg.body, [
-      { text: "Back", style: "cancel" },
-      {
-        text: cfg.confirm,
-        style: cfg.destructive ? "destructive" : "default",
-        onPress: async () => {
-          setWorking(true);
-          const original = booking;
-          setBooking({ ...booking, status: next });
-          const result = await transitionBooking(booking.id, original.status, next);
-          if (!result.ok) {
-            setBooking(original);
-            setWorking(false);
-            Alert.alert("Could not update booking", result.error);
-            return;
-          }
-          const refreshed = await fetchBookingDetail(booking.id);
-          if (refreshed) setBooking(refreshed);
-          setWorking(false);
-        },
-      },
-    ]);
+  const applyTransition = async () => {
+    if (!booking || !pendingTransition) return;
+    const next = pendingTransition;
+    setWorking(true);
+    const original = booking;
+    setBooking({ ...booking, status: next });
+    const result = await transitionBooking(booking.id, original.status, next);
+    if (!result.ok) {
+      setBooking(original);
+      setWorking(false);
+      setPendingTransition(null);
+      Alert.alert("Could not update booking", result.error);
+      return;
+    }
+    const refreshed = await fetchBookingDetail(booking.id);
+    if (refreshed) setBooking(refreshed);
+    setWorking(false);
+    setPendingTransition(null);
   };
 
   if (loading && !booking) {
@@ -132,7 +130,7 @@ export default function BookingDetailScreen() {
           <Text className="text-textMuted text-xs uppercase tracking-wider">Customer</Text>
           <Text className="text-text text-lg font-semibold mt-1">{booking.customer_name ?? "Unknown customer"}</Text>
           {booking.customer_phone ? (
-            <Text className="text-textMuted text-sm mt-0.5">+{booking.customer_phone}</Text>
+            <Text className="text-textMuted text-sm mt-0.5">{booking.customer_phone}</Text>
           ) : null}
         </View>
 
@@ -155,7 +153,7 @@ export default function BookingDetailScreen() {
         <View className="absolute left-0 right-0 bottom-0 px-6 pb-6 pt-3 bg-background border-t border-gray-100 flex-row gap-3">
           {booking.status === "pending" ? (
             <Pressable
-              onPress={() => runTransition("confirmed")}
+              onPress={() => setPendingTransition("confirmed")}
               disabled={working}
               className="flex-1 bg-primary rounded-2xl py-4 items-center active:opacity-80"
             >
@@ -163,7 +161,7 @@ export default function BookingDetailScreen() {
             </Pressable>
           ) : (
             <Pressable
-              onPress={() => runTransition("completed")}
+              onPress={() => setPendingTransition("completed")}
               disabled={working}
               className="flex-1 bg-primary rounded-2xl py-4 items-center active:opacity-80"
             >
@@ -171,7 +169,7 @@ export default function BookingDetailScreen() {
             </Pressable>
           )}
           <Pressable
-            onPress={() => runTransition("cancelled")}
+            onPress={() => setPendingTransition("cancelled")}
             disabled={working}
             className="bg-white border border-gray-200 rounded-2xl py-4 px-5 items-center justify-center active:opacity-60"
           >
@@ -179,6 +177,17 @@ export default function BookingDetailScreen() {
           </Pressable>
         </View>
       ) : null}
+
+      <ConfirmSheet
+        visible={pendingTransition !== null}
+        title={pendingTransition ? TRANSITION_COPY[pendingTransition].title : ""}
+        body={pendingTransition ? TRANSITION_COPY[pendingTransition].body : undefined}
+        confirmLabel={pendingTransition ? TRANSITION_COPY[pendingTransition].confirm : "Confirm"}
+        destructive={pendingTransition ? TRANSITION_COPY[pendingTransition].destructive : false}
+        pending={working}
+        onConfirm={applyTransition}
+        onCancel={() => setPendingTransition(null)}
+      />
     </SafeAreaView>
   );
 }
