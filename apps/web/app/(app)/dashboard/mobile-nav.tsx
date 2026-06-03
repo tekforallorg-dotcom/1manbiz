@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Calendar,
   Home,
   LineChart,
   LogOut,
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { label: "Home", href: "/dashboard", icon: Home },
   { label: "Conversations", href: "/dashboard/conversations", icon: MessageSquare },
   { label: "Orders", href: "/dashboard/orders", icon: ShoppingBag },
+  { label: "Bookings", href: "/dashboard/bookings", icon: Calendar },
   { label: "Inventory", href: "/dashboard/inventory", icon: Package },
   { label: "Customers", href: "/dashboard/customers", icon: Users },
   { label: "Receipts", href: "/dashboard/receipts", icon: Receipt },
