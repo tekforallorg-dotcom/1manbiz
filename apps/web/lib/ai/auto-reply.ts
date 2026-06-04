@@ -6,6 +6,7 @@ import {
   REPLY_MODEL,
   type ReplyCatalogProduct,
   type ReplyDeliveryZone,
+  type ReplyKnowledgeItem,
   type ReplyLine,
 } from "@/lib/ai/draft-reply";
 import { shouldAutoSend, type AiMode } from "@/lib/ai/gate";
@@ -78,6 +79,12 @@ export async function maybeAutoReply(args: {
     .eq("business_id", businessId)
     .eq("active", true)
     .order("sort_order", { ascending: true });
+  const { data: knowledgeRows } = await admin
+    .from("knowledge_items")
+    .select("title, content")
+    .eq("business_id", businessId)
+    .eq("status", "active")
+    .order("sort_order", { ascending: true });
 
   const messages: ReplyLine[] = (msgRows ?? []).map((m) => ({
     sender_role: m.sender_role as ReplyLine["sender_role"],
@@ -93,11 +100,15 @@ export async function maybeAutoReply(args: {
     fee_naira: formatNairaFromKobo(Number(z.fee_kobo)),
     note: (z.note as string | null) ?? null,
   }));
+  const knowledgeItems: ReplyKnowledgeItem[] = (knowledgeRows ?? []).map((k) => ({
+    title: k.title as string,
+    content: k.content as string,
+  }));
 
   const tone = (business.ai_tone as string | null) ?? "friendly";
   const language = (business.ai_language as string | null) ?? "en";
 
-  const result = await draftReply({ apiKey, messages, catalog, deliveryZones, tone, language });
+  const result = await draftReply({ apiKey, messages, catalog, deliveryZones, knowledgeItems, tone, language });
   if (!result.ok) {
     console.error("[ai/auto-reply] draft failed", result.error);
     return;

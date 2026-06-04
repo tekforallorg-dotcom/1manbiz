@@ -1,14 +1,11 @@
 /**
- * AI customer-reply drafting (corrected).
+ * AI customer-reply drafting.
  *
- * v2 overengineering regression: a 25-rule prompt overwhelmed Haiku 4.5 and
- * the model returned generic "Hi! What can I help you with?" replies plus
- * silently dropped needs_human from the JSON, defaulting everything to
- * high-confidence auto-send. This rewrites with v1's focused 5-rule structure
- * plus the ONE anti-bleed rule that was actually needed.
- *
- * Caller contract preserved: returns { reply, confidence: "high" | "low" }.
- * Routes and auto-reply.ts are unchanged.
+ * Grounds replies in three sources: product CATALOG, DELIVERY zones, and
+ * business KNOWLEDGE (policies / FAQ). Focused 5-rule prompt tuned for Haiku
+ * 4.5 (a longer rule set caused generic-fallback regressions). Returns
+ * { reply, confidence }; missing/unclear confidence defaults to "low" so the
+ * autonomous gate suppresses rather than sends.
  */
 
 export const REPLY_MODEL = "claude-haiku-4-5-20251001";
@@ -23,6 +20,11 @@ export interface ReplyDeliveryZone {
   label: string;
   fee_naira: string;
   note?: string | null;
+}
+
+export interface ReplyKnowledgeItem {
+  title: string;
+  content: string;
 }
 
 export interface ReplyLine {
@@ -65,15 +67,14 @@ export async function draftReply(args: {
   messages: ReplyLine[];
   catalog: ReplyCatalogProduct[];
   deliveryZones?: ReplyDeliveryZone[];
+  knowledgeItems?: ReplyKnowledgeItem[];
   tone: string;
   language: string;
 }): Promise<DraftReplyResult> {
   const { apiKey, messages, catalog, tone, language } = args;
   const deliveryZones = args.deliveryZones ?? [];
+  const knowledgeItems = args.knowledgeItems ?? [];
 
-  // Include vendor AND ai messages as "Shop:" so the model sees its own past
-  // replies and won't restate them. v1 dropped ai entirely; v2 included them.
-  // Keeping v2's inclusion (it's correct), reverting v2's prompt (it wasn't).
   const lines: string[] = [];
   let latest = "";
   for (const m of messages) {
@@ -106,16 +107,20 @@ export async function draftReply(args: {
           .join("\n")
       : "(no delivery zones configured)";
 
-  // 5 focused rules. No sub-checklist. Haiku follows this reliably.
+  const knowledgeBlock =
+    knowledgeItems.length > 0
+      ? knowledgeItems.map((k) => "- " + k.title + ": " + k.content).join("\n")
+      : "(no policies or extra info provided)";
+
   const system =
     "You are the WhatsApp assistant for a small shop, replying to the customer's most recent message. " +
-    "You have the shop's product CATALOG, DELIVERY zones, and the recent CONVERSATION (each line labelled 'Customer:' or 'Shop:'; 'Shop:' includes both the vendor and your own earlier replies).\n\n" +
+    "You have the shop's product CATALOG, DELIVERY zones, business KNOWLEDGE (policies and info), and the recent CONVERSATION (each line labelled 'Customer:' or 'Shop:'; 'Shop:' includes both the vendor and your own earlier replies).\n\n" +
     "RULE 1 — ANSWER ONLY THE LATEST CUSTOMER MESSAGE. Do not volunteer unrelated info. If they ask about a product, do not mention delivery. If they ask about delivery, do not list products. Stay on the question.\n\n" +
-    "RULE 2 — USE ONLY THE CATALOG AND DELIVERY BLOCKS for facts. Quote names, prices, stock status, and delivery fees EXACTLY as written. Never invent or estimate.\n\n" +
+    "RULE 2 — USE ONLY THE CATALOG, DELIVERY, AND KNOWLEDGE BLOCKS for facts. Quote names, prices, stock status, delivery fees, and policies EXACTLY as written. Never invent or estimate.\n\n" +
     "RULE 3 — DO NOT REPEAT what 'Shop:' has already said in this conversation. If the customer is asking again, give more detail or ask a clarifying question — never restate the same greeting twice.\n\n" +
-    "RULE 4 — IF YOU DON'T HAVE THE FACTS (refunds, returns, warranty, hours, location, payment methods, unlisted delivery area, complaints, haggling, custom requests), do NOT make up an answer. Give a short polite holding reply (e.g. 'Let me check with the shop on that and get back to you shortly') and set confidence to 'low'.\n\n" +
+    "RULE 4 — POLICY & INFO QUESTIONS (refunds, returns, warranty, hours, payment methods, location): answer from the KNOWLEDGE block when it covers the question, quoting it accurately. If KNOWLEDGE does not cover it, OR the message is a complaint, a haggling/discount request, a payment confirmation, or a custom request needing judgment, do NOT make up an answer: give a short polite holding reply (e.g. 'Let me check with the shop on that and get back to you shortly') and set confidence to 'low'.\n\n" +
     "RULE 5 — FOR ORDER INTENT ('I want X', 'I'll take 2'), confirm verbally — item, quantity, line total from catalog prices — and ask for delivery area / name if missing. Do NOT pretend the order is placed. The shop owner will send the payment link.\n\n" +
-    "Set confidence 'high' ONLY when your reply is fully grounded in CATALOG or DELIVERY. Otherwise 'low'.\n\n" +
+    "Set confidence 'high' ONLY when your reply is fully grounded in CATALOG, DELIVERY, or KNOWLEDGE. Otherwise 'low'.\n\n" +
     "Tone: warm, brief, human — like a real shop attendant on WhatsApp. No 'Thank you for your inquiry'. No emojis unless the customer used one. " +
     "Language: '" + language + "'. Style: '" + tone + "'.\n\n" +
     "Respond with ONLY this JSON, no markdown fences, no prose:\n" +
@@ -126,6 +131,8 @@ export async function draftReply(args: {
     catalogBlock +
     "\n\nDELIVERY (area: fee (note)):\n" +
     deliveryBlock +
+    "\n\nKNOWLEDGE (shop policies & info):\n" +
+    knowledgeBlock +
     "\n\nCONVERSATION (oldest to newest):\n" +
     recent +
     "\n\nReply to the final 'Customer:' line above. Return ONLY the JSON.";
@@ -174,9 +181,6 @@ export async function draftReply(args: {
   const reply = typeof obj.reply === "string" ? obj.reply.trim() : "";
   if (!reply) return { ok: false, error: "AI returned an empty reply" };
 
-  // SAFE DEFAULT: confidence falls back to "low" if missing or anything other
-  // than the literal "high". v2's bug was defaulting to high on missing — that
-  // turns every uncertain reply into an auto-send. "low" suppresses → human.
   const confidence: "high" | "low" = obj.confidence === "high" ? "high" : "low";
 
   return { ok: true, reply, confidence };

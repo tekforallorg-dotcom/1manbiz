@@ -8,6 +8,7 @@ import {
   REPLY_MODEL,
   type ReplyCatalogProduct,
   type ReplyDeliveryZone,
+  type ReplyKnowledgeItem,
   type ReplyLine,
 } from "@/lib/ai/draft-reply";
 
@@ -117,6 +118,13 @@ export async function POST(request: NextRequest) {
     .eq("active", true)
     .order("sort_order", { ascending: true });
 
+  const { data: knowledgeRows } = await admin
+    .from("knowledge_items")
+    .select("title, content")
+    .eq("business_id", business.id)
+    .eq("status", "active")
+    .order("sort_order", { ascending: true });
+
   const messages: ReplyLine[] = (msgRows ?? []).map((m) => ({
     sender_role: m.sender_role as ReplyLine["sender_role"],
     body_text: (m.body_text as string | null) ?? "",
@@ -131,11 +139,15 @@ export async function POST(request: NextRequest) {
     fee_naira: formatNairaFromKobo(Number(z.fee_kobo)),
     note: (z.note as string | null) ?? null,
   }));
+  const knowledgeItems: ReplyKnowledgeItem[] = (knowledgeRows ?? []).map((k) => ({
+    title: k.title as string,
+    content: k.content as string,
+  }));
 
   const tone = (business.ai_tone as string | null) ?? "friendly";
   const language = (business.ai_language as string | null) ?? "en";
 
-  const result = await draftReply({ apiKey, messages, catalog, deliveryZones, tone, language });
+  const result = await draftReply({ apiKey, messages, catalog, deliveryZones, knowledgeItems, tone, language });
   if (!result.ok) {
     console.error("[ai/draft-reply] draft failed", result.error);
     return NextResponse.json({ ok: false, error: result.error }, { status: 502 });
