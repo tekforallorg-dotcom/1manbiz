@@ -5,6 +5,7 @@ import {
   draftReply,
   REPLY_MODEL,
   type ReplyCatalogProduct,
+  type ReplyDeliveryZone,
   type ReplyLine,
 } from "@/lib/ai/draft-reply";
 import { shouldAutoSend, type AiMode } from "@/lib/ai/gate";
@@ -71,6 +72,12 @@ export async function maybeAutoReply(args: {
     .eq("status", "active")
     .order("name", { ascending: true })
     .limit(200);
+  const { data: zoneRows } = await admin
+    .from("delivery_zones")
+    .select("label, fee_kobo, note")
+    .eq("business_id", businessId)
+    .eq("active", true)
+    .order("sort_order", { ascending: true });
 
   const messages: ReplyLine[] = (msgRows ?? []).map((m) => ({
     sender_role: m.sender_role as ReplyLine["sender_role"],
@@ -81,11 +88,16 @@ export async function maybeAutoReply(args: {
     price_naira: formatNairaFromKobo(Number(p.price_kobo)),
     in_stock: Number(p.stock_quantity) > 0,
   }));
+  const deliveryZones: ReplyDeliveryZone[] = (zoneRows ?? []).map((z) => ({
+    label: z.label as string,
+    fee_naira: formatNairaFromKobo(Number(z.fee_kobo)),
+    note: (z.note as string | null) ?? null,
+  }));
 
   const tone = (business.ai_tone as string | null) ?? "friendly";
   const language = (business.ai_language as string | null) ?? "en";
 
-  const result = await draftReply({ apiKey, messages, catalog, tone, language });
+  const result = await draftReply({ apiKey, messages, catalog, deliveryZones, tone, language });
   if (!result.ok) {
     console.error("[ai/auto-reply] draft failed", result.error);
     return;

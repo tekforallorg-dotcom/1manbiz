@@ -22,6 +22,12 @@ export interface ReplyCatalogProduct {
   in_stock: boolean;
 }
 
+export interface ReplyDeliveryZone {
+  label: string;
+  fee_naira: string; // pre-formatted server-side
+  note?: string | null;
+}
+
 export interface ReplyLine {
   sender_role: "customer" | "vendor" | "ai";
   body_text: string;
@@ -61,10 +67,12 @@ export async function draftReply(args: {
   apiKey: string;
   messages: ReplyLine[];
   catalog: ReplyCatalogProduct[];
+  deliveryZones?: ReplyDeliveryZone[];
   tone: string;
   language: string;
 }): Promise<DraftReplyResult> {
   const { apiKey, messages, catalog, tone, language } = args;
+  const deliveryZones = args.deliveryZones ?? [];
 
   const convoLines: string[] = [];
   for (const m of messages) {
@@ -84,6 +92,12 @@ export async function draftReply(args: {
           .map((p) => `- ${p.name} | ${p.price_naira} | ${p.in_stock ? "in stock" : "out of stock"}`)
           .join("\n")
       : "(no active products)";
+  const deliveryLines =
+    deliveryZones.length > 0
+      ? deliveryZones
+          .map((z) => `- ${z.label}: ${z.fee_naira}${z.note ? " (" + z.note + ")" : ""}`)
+          .join("\n")
+      : "(no delivery information provided)";
   const recent = convoLines.slice(-20).join("\n");
 
   const system =
@@ -92,15 +106,20 @@ export async function draftReply(args: {
     "each line labelled 'Customer:' or 'Shop:'. " +
     "Answer questions about products, prices, and availability using ONLY the catalog facts given. " +
     "Quote prices and product names exactly as written in the catalog. Never invent products, prices, or stock. " +
-    "If the customer asks something the catalog cannot answer (delivery, location, payment, bespoke requests), " +
-    "do NOT make up an answer: give a short, polite holding reply (e.g. that the shop owner will confirm shortly) " +
-    "and set confidence to \"low\". Set confidence \"high\" only when your reply is fully grounded in the catalog. " +
+    "You are also given the shop's DELIVERY ZONES (area, fee, optional note). Answer delivery cost and timing " +
+    "questions using ONLY those zones; quote the fee and note exactly. If the customer's location matches a zone, " +
+    "give that fee confidently. If delivery info is empty or the customer's area is not listed, do NOT guess the fee. " +
+    "If the customer asks something neither the catalog nor the delivery zones can answer (returns, warranty, bespoke " +
+    "requests, an unlisted area), do NOT make up an answer: give a short, polite holding reply (e.g. that the shop " +
+    "owner will confirm shortly) and set confidence to \"low\". Set confidence \"high\" only when your reply is fully " +
+    "grounded in the catalog or the delivery zones. " +
     "Keep the reply short and natural for WhatsApp. No markdown, no preamble. " +
     "Write the reply in the language code: " + language + ". Use a " + tone + " tone. " +
     "Respond with ONLY a single JSON object, no markdown fences, no prose.";
 
   const user =
     `CATALOG (name | price | availability):\n${catalogLines}\n\n` +
+    `DELIVERY ZONES (area: fee (note)):\n${deliveryLines}\n\n` +
     `CONVERSATION (oldest to newest):\n${recent}\n\n` +
     `Return JSON exactly in this shape: {"reply":"<your reply text>","confidence":"high"|"low"}`;
 

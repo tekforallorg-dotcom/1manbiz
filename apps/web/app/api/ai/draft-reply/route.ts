@@ -7,6 +7,7 @@ import {
   draftReply,
   REPLY_MODEL,
   type ReplyCatalogProduct,
+  type ReplyDeliveryZone,
   type ReplyLine,
 } from "@/lib/ai/draft-reply";
 
@@ -109,6 +110,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Lookup failed" }, { status: 500 });
   }
 
+  const { data: zoneRows } = await admin
+    .from("delivery_zones")
+    .select("label, fee_kobo, note")
+    .eq("business_id", business.id)
+    .eq("active", true)
+    .order("sort_order", { ascending: true });
+
   const messages: ReplyLine[] = (msgRows ?? []).map((m) => ({
     sender_role: m.sender_role as ReplyLine["sender_role"],
     body_text: (m.body_text as string | null) ?? "",
@@ -118,11 +126,16 @@ export async function POST(request: NextRequest) {
     price_naira: formatNairaFromKobo(Number(p.price_kobo)),
     in_stock: Number(p.stock_quantity) > 0,
   }));
+  const deliveryZones: ReplyDeliveryZone[] = (zoneRows ?? []).map((z) => ({
+    label: z.label as string,
+    fee_naira: formatNairaFromKobo(Number(z.fee_kobo)),
+    note: (z.note as string | null) ?? null,
+  }));
 
   const tone = (business.ai_tone as string | null) ?? "friendly";
   const language = (business.ai_language as string | null) ?? "en";
 
-  const result = await draftReply({ apiKey, messages, catalog, tone, language });
+  const result = await draftReply({ apiKey, messages, catalog, deliveryZones, tone, language });
   if (!result.ok) {
     console.error("[ai/draft-reply] draft failed", result.error);
     return NextResponse.json({ ok: false, error: result.error }, { status: 502 });
