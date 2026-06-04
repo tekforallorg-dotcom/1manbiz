@@ -2,20 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient as createSSRClient } from "@/lib/supabase/server";
+import { formatNairaFromKobo } from "@/lib/format";
 import {
-  parseOrderFromMessages,
-  ORDER_PARSE_MODEL,
-  type CatalogProduct,
-  type InboundLine,
-} from "@/lib/ai/parse-order";
+  draftReply,
+  REPLY_MODEL,
+  type ReplyCatalogProduct,
+  type ReplyLine,
+} from "@/lib/ai/draft-reply";
 
 /**
- * AI order-draft endpoint (3H.1). Read-only: returns a proposal, writes nothing.
+ * AI customer-reply draft endpoint (AI-native brick 2). Read-only: returns a
+ * drafted reply, SENDS NOTHING. The vendor (or, later, the autonomous loop)
+ * decides whether to send it.
  *
- * Auth mirrors /api/messages/send exactly (cookie for web, Bearer for mobile).
- * Ownership is verified in code, then the admin client loads the conversation's
- * messages and the business's active catalog. The model only sees product
- * id + name; prices are never sent to or taken from the model.
+ * Auth mirrors /api/ai/parse-order (cookie for web, Bearer for mobile).
+ * Prices are formatted server-side from kobo, so the model only ever relays
+ * server-truth money, never computes it. Each draft is logged to ai_decisions
+ * (kind 'reply', outcome 'pending') for the semi-autonomous evidence base.
  */
 
 export const dynamic = "force-dynamic";
@@ -38,7 +41,7 @@ async function authenticate(request: NextRequest): Promise<string | null> {
 export async function POST(request: NextRequest) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    console.error("[ai/parse-order] ANTHROPIC_API_KEY not set");
+    console.error("[ai/draft-reply] ANTHROPIC_API_KEY not set");
     return NextResponse.json({ ok: false, error: "AI not configured" }, { status: 500 });
   }
 
@@ -62,7 +65,7 @@ export async function POST(request: NextRequest) {
 
   const { data: business } = await admin
     .from("businesses")
-    .select("id")
+    .select("id, ai_tone, ai_language")
     .eq("owner_id", userId)
     .maybeSingle();
   if (!business) {
@@ -76,7 +79,7 @@ export async function POST(request: NextRequest) {
     .eq("business_id", business.id)
     .maybeSingle();
   if (convoErr) {
-    console.error("[ai/parse-order] convo lookup failed", convoErr);
+    console.error("[ai/draft-reply] convo lookup failed", convoErr);
     return NextResponse.json({ ok: false, error: "Lookup failed" }, { status: 500 });
   }
   if (!convo) {
@@ -90,57 +93,41 @@ export async function POST(request: NextRequest) {
     .order("sent_at", { ascending: true })
     .limit(40);
   if (msgErr) {
-    console.error("[ai/parse-order] messages load failed", msgErr);
+    console.error("[ai/draft-reply] messages load failed", msgErr);
     return NextResponse.json({ ok: false, error: "Lookup failed" }, { status: 500 });
   }
 
   const { data: prodRows, error: prodErr } = await admin
     .from("products")
-    .select("id, name, price_kobo, stock_quantity")
+    .select("name, price_kobo, stock_quantity")
     .eq("business_id", business.id)
     .eq("status", "active")
     .order("name", { ascending: true })
     .limit(200);
   if (prodErr) {
-    console.error("[ai/parse-order] products load failed", prodErr);
+    console.error("[ai/draft-reply] products load failed", prodErr);
     return NextResponse.json({ ok: false, error: "Lookup failed" }, { status: 500 });
   }
 
-  const messages: InboundLine[] = (msgRows ?? []).map((m) => ({
-    sender_role: m.sender_role as InboundLine["sender_role"],
+  const messages: ReplyLine[] = (msgRows ?? []).map((m) => ({
+    sender_role: m.sender_role as ReplyLine["sender_role"],
     body_text: (m.body_text as string | null) ?? "",
   }));
-  const catalog: CatalogProduct[] = (prodRows ?? []).map((p) => ({
-    id: p.id as string,
+  const catalog: ReplyCatalogProduct[] = (prodRows ?? []).map((p) => ({
     name: p.name as string,
-    price_kobo: Number(p.price_kobo),
-    stock_quantity: Number(p.stock_quantity),
+    price_naira: formatNairaFromKobo(Number(p.price_kobo)),
+    in_stock: Number(p.stock_quantity) > 0,
   }));
 
-  console.log("[ai/parse-order] start", {
-    conversationId,
-    messages: messages.length,
-    products: catalog.length,
-  });
+  const tone = (business.ai_tone as string | null) ?? "friendly";
+  const language = (business.ai_language as string | null) ?? "en";
 
-  const result = await parseOrderFromMessages({ apiKey, messages, catalog });
-
+  const result = await draftReply({ apiKey, messages, catalog, tone, language });
   if (!result.ok) {
-    console.error("[ai/parse-order] parse failed", result.error);
+    console.error("[ai/draft-reply] draft failed", result.error);
     return NextResponse.json({ ok: false, error: result.error }, { status: 502 });
   }
 
-  console.log("[ai/parse-order] success", {
-    conversationId,
-    items: result.proposal.lineItems.length,
-    confidence: result.proposal.confidence,
-  });
-
-  // Record the decision for the semi-autonomous evidence base. Non-fatal: a
-  // logging failure must never break the vendor's draft. The row starts at
-  // outcome 'pending'; the client records the human verdict later (accept /
-  // edit / reject) via /api/ai/decision-outcome. mode is 'assisted' for now --
-  // every decision today is human-pulled and human-disposed.
   let decisionId: string | null = null;
   try {
     const { data: decision, error: logErr } = await admin
@@ -149,24 +136,29 @@ export async function POST(request: NextRequest) {
         business_id: business.id,
         conversation_id: conversationId,
         created_by: userId,
-        kind: "order_proposal",
+        kind: "reply",
         mode: "assisted",
-        model: ORDER_PARSE_MODEL,
+        model: REPLY_MODEL,
         input_message_count: messages.length,
-        item_count: result.proposal.lineItems.length,
-        confidence: result.proposal.confidence,
-        proposal: result.proposal,
+        item_count: 0,
+        confidence: result.confidence,
+        proposal: { reply: result.reply, confidence: result.confidence },
       })
       .select("id")
       .single();
     if (logErr) {
-      console.error("[ai/parse-order] decision log failed", logErr);
+      console.error("[ai/draft-reply] decision log failed", logErr);
     } else {
       decisionId = decision?.id ?? null;
     }
   } catch (e) {
-    console.error("[ai/parse-order] decision log threw", e);
+    console.error("[ai/draft-reply] decision log threw", e);
   }
 
-  return NextResponse.json({ ok: true, proposal: result.proposal, decisionId });
+  return NextResponse.json({
+    ok: true,
+    reply: result.reply,
+    confidence: result.confidence,
+    decisionId,
+  });
 }
