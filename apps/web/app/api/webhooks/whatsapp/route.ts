@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { previewFromIncoming } from "@/lib/conversations";
 import { normalizePhoneE164 } from "@/lib/phone";
+import { maybeAutoReply } from "@/lib/ai/auto-reply";
 
 /**
  * WhatsApp Cloud API webhook.
@@ -170,6 +171,11 @@ export async function POST(request: NextRequest) {
       const businessId: string = channelAccount.business_id;
       const channelAccountId: string = channelAccount.id;
 
+      // Conversations that received a FRESH customer text in this delivery.
+      // We auto-reply once per conversation after the message loop (batch-safe),
+      // and only on fresh inserts so webhook retries never double-reply.
+      const autoReplyTargets = new Map<string, string>(); // conversationId -> toE164
+
       // ----- Inbound messages -----
       const contactsByWaId = new Map<string, { name?: string }>();
       for (const c of value.contacts ?? []) {
@@ -293,7 +299,7 @@ export async function POST(request: NextRequest) {
           ? message.type ?? null
           : null;
 
-        const { error: msgInsertErr } = await admin
+        const { data: insertedMsg, error: msgInsertErr } = await admin
           .from("messages")
           .insert({
             conversation_id: conversationId,
@@ -304,13 +310,36 @@ export async function POST(request: NextRequest) {
             media_type: mediaType,
             sent_at: sentAt,
             meta_message_id: message.id,
-          });
+          })
+          .select("id")
+          .maybeSingle();
 
         if (msgInsertErr) {
           // Duplicate wamid => idempotent replay; ignore. Other errors logged.
           if (!String(msgInsertErr.message).includes("duplicate key")) {
             console.error("[whatsapp-webhook] message insert failed", msgInsertErr);
           }
+        } else if (insertedMsg && message.type === "text" && bodyText) {
+          // Fresh inbound text -> eligible for an autonomous reply (one per
+          // conversation; later messages in the same delivery just overwrite
+          // the target, so we reply once with full context).
+          autoReplyTargets.set(conversationId, phoneE164);
+        }
+      }
+
+      // ----- Autonomous replies (brick 3) -----
+      // Runs after all messages are persisted. maybeAutoReply self-gates on
+      // ai_mode='autonomous' + high confidence, and never throws.
+      for (const [convId, toE164] of autoReplyTargets) {
+        try {
+          await maybeAutoReply({
+            businessId,
+            conversationId: convId,
+            channelAccountId,
+            toE164,
+          });
+        } catch (e) {
+          console.error("[whatsapp-webhook] auto-reply threw", e);
         }
       }
 
