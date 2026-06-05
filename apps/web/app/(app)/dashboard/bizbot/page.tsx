@@ -3,10 +3,11 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 import { KnowledgeManager, type KnowledgeItem } from "./knowledge-manager";
+import { DeliveryZonesManager, type DeliveryZone } from "./delivery-zones-manager";
 
 export const dynamic = "force-dynamic";
 
-export default async function AiStaffPage() {
+export default async function BizBotPage() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -34,6 +35,21 @@ export default async function AiStaffPage() {
     content: it.content as string,
   }));
 
+  const { data: zoneRows } = await supabase
+    .from("delivery_zones")
+    .select("id, label, fee_kobo, note")
+    .eq("business_id", business.id)
+    .eq("active", true)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  const zones: DeliveryZone[] = (zoneRows ?? []).map((z) => ({
+    id: z.id as string,
+    label: z.label as string,
+    feeKobo: Number(z.fee_kobo ?? 0),
+    note: (z.note as string | null) ?? "",
+  }));
+
   return (
     <div className="space-y-8">
       <header>
@@ -51,11 +67,24 @@ export default async function AiStaffPage() {
             Knowledge base
           </h2>
           <p className="mt-1 text-sm text-text-secondary">
-            Policies and FAQs your AI can answer on its own &mdash; refunds, warranty, hours, payment, and more.
+            Policies and FAQs BizBot can answer on its own &mdash; refunds, warranty, hours, payment, and more.
           </p>
         </div>
 
         <KnowledgeManager items={knowledge} />
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-[0.08em] text-text-muted">
+            Delivery areas
+          </h2>
+          <p className="mt-1 text-sm text-text-secondary">
+            Where you deliver and what you charge. BizBot quotes these fees when customers ask.
+          </p>
+        </div>
+
+        <DeliveryZonesManager zones={zones} />
       </section>
     </div>
   );
