@@ -59,18 +59,9 @@ export default function OrdersScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["top"]}>
-      <View className="px-6 pt-4 pb-3 flex-row items-start justify-between">
-        <View className="flex-1">
-          <Text className="text-text text-3xl font-bold">Orders</Text>
-          <Text className="text-textMuted text-base mt-1">Capture and track sales</Text>
-        </View>
-        <Pressable
-          onPress={() => router.push("/orders/new")}
-          className="bg-primary w-11 h-11 rounded-full items-center justify-center active:opacity-80"
-          hitSlop={8}
-        >
-          <Plus size={22} color="#FFFFFF" />
-        </Pressable>
+      <View className="px-6 pt-4 pb-3">
+        <Text className="text-text text-3xl font-bold">Orders</Text>
+        <Text className="text-textMuted text-base mt-1">Capture and track sales</Text>
       </View>
 
       <View className="pb-3">
@@ -104,6 +95,25 @@ export default function OrdersScreen() {
           </View>
         )}
       </ScrollView>
+
+      <Pressable
+        onPress={() => router.push("/orders/new")}
+        className="absolute bg-primary rounded-full items-center justify-center active:opacity-80"
+        style={{
+          right: 24,
+          bottom: 24,
+          width: 56,
+          height: 56,
+          shadowColor: "#0B0B0B",
+          shadowOpacity: 0.18,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 6,
+        }}
+        hitSlop={6}
+      >
+        <Plus size={26} color="#FFFFFF" strokeWidth={2.5} />
+      </Pressable>
     </SafeAreaView>
   );
 }
