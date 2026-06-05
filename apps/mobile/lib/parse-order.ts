@@ -1,9 +1,10 @@
 import { supabase } from "./supabase";
+import { API_BASE_URL } from "./config";
 import type { OrderProposal } from "@1manbiz/shared";
 
 export type { OrderProposal };
 
-const API_BASE = "https://1manbiz.vercel.app"; // TODO: move to EXPO_PUBLIC_API_BASE_URL.
+const API_BASE = API_BASE_URL;
 
 export type ParseResult =
   | { ok: true; proposal: OrderProposal }

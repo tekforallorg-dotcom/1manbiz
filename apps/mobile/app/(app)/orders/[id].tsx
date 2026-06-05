@@ -11,6 +11,7 @@ import {
   type OrderDetail,
 } from "../../../lib/order-detail";
 import { formatNaira, formatDateTime } from "../../../lib/format";
+import { API_BASE_URL } from "../../../lib/config";
 import { ScreenHeader } from "../../../components/screen-header";
 import { ConfirmSheet } from "../../../components/confirm-sheet";
 import { LineItemRow } from "../../../components/line-item-row";
@@ -24,7 +25,7 @@ const STATUS_STYLES = {
   cancelled: { bg: "bg-gray-100",  text: "text-gray-600",  label: "Cancelled" },
 } as const;
 
-const WEB_BASE = "https://1manbiz.vercel.app";
+const WEB_BASE = API_BASE_URL;
 
 export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();

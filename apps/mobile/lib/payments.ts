@@ -3,8 +3,9 @@
 // amount in kobo, and handles idempotency - mobile never sends an amount.
 
 import { supabase } from "./supabase";
+import { API_BASE_URL } from "./config";
 
-const WEB_BASE = "https://1manbiz.vercel.app";
+const WEB_BASE = API_BASE_URL;
 
 type InitResult =
   | { ok: true; authorizationUrl: string; reference: string; payUrl: string }

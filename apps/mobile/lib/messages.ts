@@ -1,7 +1,8 @@
 import { supabase } from "./supabase";
+import { API_BASE_URL } from "./config";
 import type { MessageRow } from "./conversations";
 
-const API_BASE = "https://1manbiz.vercel.app"; // TODO: move to EXPO_PUBLIC_API_BASE_URL.
+const API_BASE = API_BASE_URL;
 
 type SendApiResponse = {
   ok?: boolean;
