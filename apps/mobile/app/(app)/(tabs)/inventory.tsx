@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { View, Text, ScrollView, RefreshControl } from "react-native";
+import { View, Text, ScrollView, RefreshControl, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSession } from "../../../lib/session";
@@ -7,6 +7,7 @@ import { getActiveBusinessId } from "../../../lib/business";
 import { fetchProducts, type ProductFilter, type Product } from "../../../lib/products";
 import { ProductRow } from "../../../components/product-row";
 import { StatusFilter } from "../../../components/status-filter";
+import { Plus } from "lucide-react-native";
 
 const FILTER_OPTIONS: { value: ProductFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -75,7 +76,7 @@ export default function InventoryScreen() {
             <Text className="text-text text-base font-medium">No products</Text>
             <Text className="text-textMuted text-sm mt-1">
               {filter === "all"
-                ? "Add products from the web app to start selling."
+                ? "Tap the plus button to add your first product."
                 : `No products in this view.`}
             </Text>
           </View>
@@ -91,6 +92,25 @@ export default function InventoryScreen() {
           </View>
         )}
       </ScrollView>
+
+      <Pressable
+        onPress={() => router.push("/products/new")}
+        className="absolute bg-primary rounded-full items-center justify-center active:opacity-80"
+        style={{
+          right: 24,
+          bottom: 24,
+          width: 56,
+          height: 56,
+          shadowColor: "#0B0B0B",
+          shadowOpacity: 0.18,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 6,
+        }}
+        hitSlop={6}
+      >
+        <Plus size={26} color="#FFFFFF" strokeWidth={2.5} />
+      </Pressable>
     </SafeAreaView>
   );
 }

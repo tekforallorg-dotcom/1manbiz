@@ -78,3 +78,36 @@ export async function updateProduct(
   }
   return { ok: true };
 }
+
+export interface ProductCreate {
+  name: string;
+  price_kobo: number;
+  stock_quantity: number;
+  status: ProductStatus;
+}
+
+// Owner-scoped insert. RLS policy products_insert_by_owner enforces that the
+// caller owns the target business via its with_check, so no extra guard is
+// needed here. currency takes its column default and image_path, sku, and
+// description stay null; those are set later in the image slice.
+export async function createProduct(
+  businessId: string,
+  input: ProductCreate,
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const { data, error } = await supabase
+    .from("products")
+    .insert({
+      business_id: businessId,
+      name: input.name,
+      price_kobo: input.price_kobo,
+      stock_quantity: input.stock_quantity,
+      status: input.status,
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    console.error("[products] create error:", error);
+    return { ok: false, error: error?.message ?? "Could not create product." };
+  }
+  return { ok: true, id: (data as { id: string }).id };
+}
