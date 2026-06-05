@@ -1,12 +1,13 @@
 import { useState } from "react";
-import {
-  View, Text, Pressable, ActivityIndicator, Alert, Linking, Share,
-} from "react-native";
-import { MessageCircle, Link2 } from "lucide-react-native";
+import { View, Text, Pressable, ActivityIndicator } from "react-native";
+import { useRouter, type Href } from "expo-router";
+import { MessageCircle, ArrowRight } from "lucide-react-native";
 import { colors as designColors } from "@1manbiz/design";
 
+import { supabase } from "../lib/supabase";
 import { formatNaira } from "../lib/format";
 import { initPaymentLink } from "../lib/payments";
+import { sendReply } from "../lib/messages";
 
 type Props = {
   orderId: string;
@@ -15,91 +16,103 @@ type Props = {
   subtotalKobo: number;
 };
 
+// Resolve the customer's WhatsApp thread by phone. RLS scopes conversations to
+// the signed-in owner's business, so no explicit business_id filter is needed.
+async function resolveConversationId(phoneE164: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("contact_phone_e164", phoneE164)
+    .eq("channel", "whatsapp")
+    .order("last_message_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data ? (data as { id: string }).id : null;
+}
+
 export function PaymentLinkButton({ orderId, customerName, customerPhone, subtotalKobo }: Props) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [payUrl, setPayUrl] = useState<string | null>(null);
+  const [sentConversationId, setSentConversationId] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
 
   const buildMessage = (url: string) => {
     const who = customerName ? "Hi " + customerName + ", " : "Hi, ";
     return who + "here is your secure payment link for " + formatNaira(subtotalKobo) + ": " + url;
   };
 
-  const sendViaWhatsApp = async (url: string) => {
-    const digits = (customerPhone ?? "").replace(/[^0-9]/g, "");
-    const text = encodeURIComponent(buildMessage(url));
-    const waUrl = digits.length >= 7 ? `https://wa.me/${digits}?text=${text}` : `https://wa.me/?text=${text}`;
-    try {
-      await Linking.openURL(waUrl);
-    } catch {
-      try {
-        await Share.share({ message: buildMessage(url) });
-      } catch {
-        /* user dismissed the share sheet */
-      }
-    }
-  };
-
-  const shareLink = async (url: string) => {
-    try {
-      await Share.share({ message: buildMessage(url) });
-    } catch {
-      /* user dismissed the share sheet */
-    }
-  };
-
-  const createAndSend = async () => {
+  const onSend = async () => {
+    setProblem(null);
     setLoading(true);
-    const result = await initPaymentLink(orderId);
-    setLoading(false);
-    if (!result.ok) {
-      Alert.alert("Payment link", result.error);
+
+    const phone = (customerPhone ?? "").trim();
+    if (!phone) {
+      setLoading(false);
+      setProblem("This customer has no phone on file, so there is no WhatsApp chat to send into.");
       return;
     }
-    setPayUrl(result.payUrl);
-    await sendViaWhatsApp(result.payUrl);
+
+    const conversationId = await resolveConversationId(phone);
+    if (!conversationId) {
+      setLoading(false);
+      setProblem("No WhatsApp chat with this customer yet. The link can only be sent as a reply to a live chat.");
+      return;
+    }
+
+    const init = await initPaymentLink(orderId);
+    if (!init.ok) {
+      setLoading(false);
+      setProblem(init.error);
+      return;
+    }
+
+    const result = await sendReply(conversationId, buildMessage(init.payUrl));
+    setLoading(false);
+    if (!result.ok) {
+      setProblem(
+        "Could not send to the chat (" + result.error +
+          "). If the customer has not messaged in the last 24h, WhatsApp needs an approved template - that is a separate step.",
+      );
+      return;
+    }
+    setSentConversationId(conversationId);
   };
 
-  if (payUrl) {
+  if (sentConversationId) {
     return (
       <View style={{ gap: 8 }}>
-        <View className="bg-white border border-gray-200 rounded-2xl px-4 py-3">
-          <Text className="text-textMuted text-xs uppercase tracking-wider">Payment link</Text>
-          <Text className="text-text text-sm mt-1" numberOfLines={1}>{payUrl}</Text>
+        <View className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 flex-row items-center">
+          <MessageCircle size={18} color="#15803D" />
+          <Text className="text-green-700 text-sm font-medium ml-2">Payment link sent in chat</Text>
         </View>
-        <View className="flex-row" style={{ gap: 8 }}>
-          <Pressable
-            onPress={() => sendViaWhatsApp(payUrl)}
-            className="flex-1 bg-primary rounded-2xl py-4 items-center active:opacity-80 flex-row justify-center"
-          >
-            <MessageCircle size={18} color="#FFFFFF" />
-            <Text className="text-white text-base font-semibold ml-2">WhatsApp</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => shareLink(payUrl)}
-            className="flex-1 bg-white border border-gray-200 rounded-2xl py-4 items-center active:opacity-60 flex-row justify-center"
-          >
-            <Link2 size={18} color={designColors.text} />
-            <Text className="text-text text-base font-semibold ml-2">Share</Text>
-          </Pressable>
-        </View>
+        <Pressable
+          onPress={() => router.push(("/conversations/" + sentConversationId) as Href)}
+          className="bg-white border border-gray-200 rounded-2xl py-4 items-center active:opacity-60 flex-row justify-center"
+        >
+          <Text className="text-text text-base font-semibold mr-2">View conversation</Text>
+          <ArrowRight size={18} color={designColors.text} />
+        </Pressable>
       </View>
     );
   }
 
   return (
-    <Pressable
-      onPress={createAndSend}
-      disabled={loading}
-      className="bg-white border border-gray-200 rounded-2xl py-4 items-center active:opacity-60 flex-row justify-center"
-    >
-      {loading ? (
-        <ActivityIndicator color={designColors.primary} />
-      ) : (
-        <>
-          <MessageCircle size={18} color={designColors.primary} />
-          <Text className="text-primary text-base font-semibold ml-2">Send payment link</Text>
-        </>
-      )}
-    </Pressable>
+    <View style={{ gap: 8 }}>
+      <Pressable
+        onPress={onSend}
+        disabled={loading}
+        className="bg-white border border-gray-200 rounded-2xl py-4 items-center active:opacity-60 flex-row justify-center"
+      >
+        {loading ? (
+          <ActivityIndicator color={designColors.primary} />
+        ) : (
+          <>
+            <MessageCircle size={18} color={designColors.primary} />
+            <Text className="text-primary text-base font-semibold ml-2">Send payment link</Text>
+          </>
+        )}
+      </Pressable>
+      {problem ? <Text className="text-textMuted text-sm px-1">{problem}</Text> : null}
+    </View>
   );
 }
