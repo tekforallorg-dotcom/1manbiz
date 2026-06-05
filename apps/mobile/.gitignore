@@ -9,3 +9,6 @@ android/
 .env.local
 .DS_Store
 expo-env.d.ts
+
+/ios
+/android

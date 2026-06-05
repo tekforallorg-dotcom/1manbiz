@@ -8,14 +8,30 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "biz.oneman.app",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "1Man.Biz uses your photos so you can add a product image from your library.",
+          "cameraPermission": "1Man.Biz uses your camera so you can photograph a product to add it to your catalogue."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c21f9a3e-3042-4fa2-8f90-d70f57d1b8e1"
+      }
     }
   }
 }

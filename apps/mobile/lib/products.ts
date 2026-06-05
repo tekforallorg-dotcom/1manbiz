@@ -84,6 +84,7 @@ export interface ProductCreate {
   price_kobo: number;
   stock_quantity: number;
   status: ProductStatus;
+  image_path?: string | null;
 }
 
 // Owner-scoped insert. RLS policy products_insert_by_owner enforces that the
@@ -102,6 +103,7 @@ export async function createProduct(
       price_kobo: input.price_kobo,
       stock_quantity: input.stock_quantity,
       status: input.status,
+      image_path: input.image_path ?? null,
     })
     .select("id")
     .single();
