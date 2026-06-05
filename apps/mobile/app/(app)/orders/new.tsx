@@ -117,7 +117,7 @@ export default function NewOrderScreen() {
       return;
     }
     if (result.error) {
-      // Order created but items failed — warn and still navigate
+      // Order created but items failed. warn and still navigate
       Alert.alert("Order saved with issues", result.error);
     }
     router.replace(`/orders/${result.id}`);

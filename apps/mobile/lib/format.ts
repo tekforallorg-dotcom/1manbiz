@@ -18,7 +18,7 @@ export function startOfTodayIso(): string {
 
 // Long-form date+time for detail screens: "19 May 2026, 14:32".
 export function formatDateTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const d = new Date(iso);
   const date = d.toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
   const time = d.toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit", hour12: false });

@@ -1,5 +1,5 @@
 /**
- * firstNameFrom — derive a greeting first name from a profile row.
+ * firstNameFrom. derive a greeting first name from a profile row.
  *
  * { full_name: "Vitalis Mabia", email: "psalms@x.com" } -> "Vitalis"
  * { full_name: "   ",          email: "psalms@x.com" } -> "psalms"

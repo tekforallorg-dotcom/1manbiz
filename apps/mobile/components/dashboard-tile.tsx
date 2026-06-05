@@ -19,7 +19,7 @@ export function DashboardTile({ label, value, loading }: Props) {
         <View className="mt-2 h-8 w-20 rounded-md bg-gray-100" />
       ) : (
         <Text className="text-text text-2xl font-bold mt-1" numberOfLines={1}>
-          {value ?? "—"}
+          {value ?? ", "}
         </Text>
       )}
     </View>

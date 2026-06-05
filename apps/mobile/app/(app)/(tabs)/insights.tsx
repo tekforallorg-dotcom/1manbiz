@@ -32,9 +32,9 @@ function buildSummary(w: WindowStats, label: string): string {
     parts.push("You've collected " + formatNaira(w.paidRevenueKobo) + " across " + w.paidCount + " paid order" + (w.paidCount === 1 ? "" : "s") + " in the " + label + ".");
   }
   if (w.outstandingKobo > 0) {
-    parts.push(formatNaira(w.outstandingKobo) + " is still outstanding across " + w.pendingCount + " order" + (w.pendingCount === 1 ? "" : "s") + " — your best next move is to follow them up.");
+    parts.push(formatNaira(w.outstandingKobo) + " is still outstanding across " + w.pendingCount + " order" + (w.pendingCount === 1 ? "" : "s") + ". Your best next move is to follow them up.");
   } else if (w.paidCount > 0) {
-    parts.push("Nothing outstanding right now — you're all caught up.");
+    parts.push("Nothing outstanding right now. You're all caught up.");
   }
   return parts.join(" ");
 }

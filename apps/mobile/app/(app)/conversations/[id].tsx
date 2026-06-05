@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronLeft, Send, Sparkles, X, Minus, Plus } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, Send, Sparkles, X, Minus, Plus } from "lucide-react-native";
 import { colors as designColors } from "@1manbiz/design";
 
 import { getActiveBusinessId } from "../../../lib/business";
@@ -31,6 +31,7 @@ import {
   type MessageRow,
 } from "../../../lib/conversations";
 import { sendReply } from "../../../lib/messages";
+import { fetchCustomerStats, type CustomerStats } from "../../../lib/customer-stats";
 import { supabase } from "../../../lib/supabase";
 import { MessageBubble } from "../../../components/message-bubble";
 
@@ -47,6 +48,20 @@ let draftUidSeq = 0;
 function nextDraftUid(): string {
   draftUidSeq += 1;
   return "dl" + draftUidSeq;
+}
+
+// Compact money for header pills: 1.3M, 12k, 900. Avoids Intl (Hermes-safe).
+function compactNaira(kobo: number): string {
+  const naira = Math.round(kobo / 100);
+  if (naira >= 1000000) {
+    const m = naira / 1000000;
+    return "₦" + (m % 1 === 0 ? m.toFixed(0) : m.toFixed(1)) + "M";
+  }
+  if (naira >= 1000) {
+    const k = naira / 1000;
+    return "₦" + (k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)) + "k";
+  }
+  return "₦" + String(naira);
 }
 
 export default function ConversationThreadScreen() {
@@ -69,6 +84,7 @@ export default function ConversationThreadScreen() {
   const [draftError, setDraftError] = useState<string | null>(null);
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [creating, setCreating] = useState(false);
+  const [customerStats, setCustomerStats] = useState<CustomerStats | null>(null);
 
   const scrollRef = useRef<ScrollView>(null);
 
@@ -119,6 +135,17 @@ export default function ConversationThreadScreen() {
       setRefreshing(false);
     }
   }, [id]);
+
+  useEffect(() => {
+    const cid = header?.customer_id ?? null;
+    if (!cid) { setCustomerStats(null); return; }
+    let cancelled = false;
+    (async () => {
+      const stats = await fetchCustomerStats(cid);
+      if (!cancelled) setCustomerStats(stats);
+    })();
+    return () => { cancelled = true; };
+  }, [header?.customer_id]);
 
   // Scroll to bottom when message list changes.
   useEffect(() => {
@@ -311,6 +338,7 @@ export default function ConversationThreadScreen() {
     ?? header?.contact_phone_e164
     ?? "Customer";
   const showSubtitle = !!(header?.contact_phone_e164 && header?.customer_name);
+  const avatarInitial = (displayName.trim()[0] ?? "?").toUpperCase();
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["top", "left", "right"]}>
@@ -328,10 +356,13 @@ export default function ConversationThreadScreen() {
           >
             <ChevronLeft size={24} color={designColors.text} strokeWidth={2} />
           </Pressable>
-          <View className="flex-1 ml-1">
+          <View className="w-9 h-9 rounded-full bg-surface-muted items-center justify-center ml-1 mr-2.5">
+            <Text className="text-text text-base font-semibold">{avatarInitial}</Text>
+          </View>
+          <View className="flex-1">
             <Text className="text-text text-lg font-semibold" numberOfLines={1}>{displayName}</Text>
             {showSubtitle ? (
-              <Text className="text-textMuted text-xs" numberOfLines={1}>{header?.contact_phone_e164}</Text>
+              <Text className="text-textMuted text-xs" numberOfLines={1}>{header?.contact_phone_e164} · WhatsApp</Text>
             ) : null}
           </View>
           {!loading && !error ? (
@@ -345,6 +376,31 @@ export default function ConversationThreadScreen() {
             </Pressable>
           ) : null}
         </View>
+
+        {!loading && !error && header?.customer_id && customerStats ? (
+          <View className="flex-row items-center flex-wrap px-4 pt-2.5 pb-0.5">
+            <View className="bg-surface-muted rounded-full px-3 py-1.5 mr-2 mb-1">
+              <Text className="text-textMuted text-xs font-medium">{compactNaira(customerStats.totalSpentKobo)} spent</Text>
+            </View>
+            <View className="bg-surface-muted rounded-full px-3 py-1.5 mr-2 mb-1">
+              <Text className="text-textMuted text-xs font-medium">
+                {customerStats.totalOrders === 1 ? "1 order" : `${customerStats.totalOrders} orders`}
+              </Text>
+            </View>
+            {customerStats.openOrders > 0 && customerStats.openOrderId ? (
+              <Pressable
+                onPress={() => router.push(`/orders/${customerStats.openOrderId}`)}
+                className="flex-row items-center bg-green-50 rounded-full pl-3 pr-2 py-1.5 mb-1 active:opacity-70"
+                hitSlop={6}
+              >
+                <Text className="text-green-700 text-xs font-semibold">
+                  {customerStats.openOrders === 1 ? "1 open order" : `${customerStats.openOrders} open orders`}
+                </Text>
+                <ChevronRight size={13} color="#15803D" strokeWidth={2.5} />
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
 
         {loading ? (
           <View className="flex-1 items-center justify-center">

@@ -35,7 +35,7 @@ export default function HomeScreen() {
     setFirstName(firstNameFrom({ full_name: profileRes.data?.full_name, email: userEmail }));
 
     if (!businessId) {
-      // No business yet — render empty dashboard. User likely mid-onboarding.
+      // No business yet. render empty dashboard. User likely mid-onboarding.
       setSummary({
         tiles: { revenueTodayKobo: 0, ordersTodayCount: 0, pendingCount: 0, activeProductsCount: 0 },
         recentOrders: [],
