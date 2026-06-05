@@ -4,7 +4,7 @@
 export function formatNairaFromKobo(kobo: number): string {
   const naira = Math.round(kobo) / 100;
   const hasFraction = naira % 1 !== 0;
-  const [whole, frac] = naira.toFixed(hasFraction ? 2 : 0).split(".");
+  const [whole = "", frac] = naira.toFixed(hasFraction ? 2 : 0).split(".");
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   return "\u20A6" + grouped + (frac ? "." + frac : "");
 }
