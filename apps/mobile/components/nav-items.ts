@@ -5,6 +5,7 @@ import {
   Receipt,
   Calendar,
   Package,
+  Bot,
   Settings,
 } from "lucide-react-native";
 
@@ -18,7 +19,7 @@ export type NavItem = {
 };
 
 // Single source of truth for mobile destinations. The bottom bar renders PINNED;
-// the drawer renders the full list. route is a plain string so we can compare it
+// the drawer renders the full list. route is a plain string so it can be compared
 // against usePathname(); it is cast to Href at the router.push call site.
 export const NAV_ITEMS: NavItem[] = [
   { name: "home", label: "Home", route: "/home", icon: House },
@@ -26,6 +27,7 @@ export const NAV_ITEMS: NavItem[] = [
   { name: "orders", label: "Orders", route: "/orders", icon: Receipt },
   { name: "bookings", label: "Bookings", route: "/bookings", icon: Calendar },
   { name: "inventory", label: "Inventory", route: "/inventory", icon: Package },
+  { name: "bizbot", label: "BizBot", route: "/bizbot", icon: Bot },
   { name: "settings", label: "Settings", route: "/settings", icon: Settings },
 ];
 

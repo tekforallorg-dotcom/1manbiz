@@ -26,6 +26,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="orders" />
         <Tabs.Screen name="bookings" />
         <Tabs.Screen name="inventory" />
+        <Tabs.Screen name="bizbot" />
         <Tabs.Screen name="settings" />
       </Tabs>
 
