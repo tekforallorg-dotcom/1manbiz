@@ -38,10 +38,10 @@ export default async function AiStaffPage() {
     <div className="space-y-8">
       <header>
         <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-          AI Staff
+          BizBot
         </h1>
         <p className="mt-1 text-sm text-text-secondary">
-          Teach your AI how to answer customers. It uses these answers automatically on WhatsApp.
+          Teach BizBot how to answer your customers. It replies automatically on WhatsApp.
         </p>
       </header>
 

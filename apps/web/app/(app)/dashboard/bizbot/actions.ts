@@ -51,7 +51,7 @@ export async function createKnowledgeItem(input: {
     return { ok: false, error: "Could not save. Please try again." };
   }
 
-  revalidatePath("/dashboard/ai-staff");
+  revalidatePath("/dashboard/bizbot");
   return { ok: true };
 }
 
@@ -87,7 +87,7 @@ export async function updateKnowledgeItem(
     return { ok: false, error: "Could not save. Please try again." };
   }
 
-  revalidatePath("/dashboard/ai-staff");
+  revalidatePath("/dashboard/bizbot");
   return { ok: true };
 }
 
@@ -115,6 +115,6 @@ export async function archiveKnowledgeItem(id: string): Promise<KnowledgeActionR
     return { ok: false, error: "Could not remove. Please try again." };
   }
 
-  revalidatePath("/dashboard/ai-staff");
+  revalidatePath("/dashboard/bizbot");
   return { ok: true };
 }

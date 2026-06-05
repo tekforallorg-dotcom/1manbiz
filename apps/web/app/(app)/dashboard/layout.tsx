@@ -28,7 +28,7 @@ const NAV_ITEMS = [
   { label: "Customers", href: "/dashboard/customers", icon: Users },
   { label: "Receipts", href: "/dashboard/receipts", icon: Receipt },
   { label: "Insights", href: "/dashboard/insights", icon: LineChart },
-  { label: "AI Staff", href: "/dashboard/ai-staff", icon: Bot },
+  { label: "BizBot", href: "/dashboard/bizbot", icon: Bot },
   { label: "Settings", href: "/dashboard/settings", icon: Settings },
 ] as const;
 
