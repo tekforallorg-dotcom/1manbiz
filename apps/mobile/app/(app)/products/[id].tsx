@@ -7,6 +7,7 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -19,6 +20,10 @@ import {
   type ProductStatus,
 } from "../../../lib/products";
 import { formatNaira } from "../../../lib/format";
+import { useSession } from "../../../lib/session";
+import { getActiveBusinessId } from "../../../lib/business";
+import { pickAndUploadProductImage, productImageUrl } from "../../../lib/product-image";
+import { ImagePlus } from "lucide-react-native";
 
 export default function EditProductScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -28,10 +33,27 @@ export default function EditProductScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const { session } = useSession();
+  const userId = session?.user?.id;
+
   const [name, setName] = useState("");
   const [priceText, setPriceText] = useState("");
   const [stock, setStock] = useState(0);
   const [status, setStatus] = useState<ProductStatus>("active");
+  const [businessId, setBusinessId] = useState<string | null>(null);
+  const [imagePath, setImagePath] = useState<string | null>(null);
+  const [imageLocalUri, setImageLocalUri] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    (async () => {
+      const bid = await getActiveBusinessId(userId);
+      if (!cancelled) setBusinessId(bid);
+    })();
+    return () => { cancelled = true; };
+  }, [userId]);
 
   useEffect(() => {
     if (!id) return;
@@ -45,6 +67,7 @@ export default function EditProductScreen() {
         setPriceText(String(Math.round(p.price_kobo / 100)));
         setStock(p.stock_quantity);
         setStatus(p.status);
+        setImagePath(p.image_path);
       })
       .catch((err) => console.error("[edit-product] load error:", err))
       .finally(() => {
@@ -63,8 +86,33 @@ export default function EditProductScreen() {
     (nameTrimmed !== product.name ||
       priceKobo !== product.price_kobo ||
       stock !== product.stock_quantity ||
-      status !== product.status);
+      status !== product.status ||
+      imagePath !== product.image_path);
   const canSave = valid && dirty && !saving;
+
+  const handlePickImage = async () => {
+    if (uploadingImage) return;
+    const bid = businessId ?? (userId ? await getActiveBusinessId(userId) : null);
+    if (!bid) {
+      Alert.alert("No business", "Could not find your active business yet. Try again in a moment.");
+      return;
+    }
+    setUploadingImage(true);
+    const res = await pickAndUploadProductImage(bid);
+    setUploadingImage(false);
+    if (res.status === "cancelled") return;
+    if (res.status === "error") {
+      Alert.alert("Image not added", res.message);
+      return;
+    }
+    setImagePath(res.path);
+    setImageLocalUri(res.localUri);
+  };
+
+  const handleRemoveImage = () => {
+    setImagePath(null);
+    setImageLocalUri(null);
+  };
 
   const handleSave = async () => {
     if (!id || !canSave) return;
@@ -74,6 +122,7 @@ export default function EditProductScreen() {
       price_kobo: priceKobo,
       stock_quantity: stock,
       status,
+      ...(imagePath !== (product?.image_path ?? null) ? { image_path: imagePath } : {}),
     });
     setSaving(false);
     if (!result.ok) {
@@ -101,7 +150,40 @@ export default function EditProductScreen() {
             contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 140, paddingTop: 8 }}
             keyboardShouldPersistTaps="handled"
           >
-            <Text className="text-textMuted text-xs uppercase tracking-wider">Name</Text>
+            <Text className="text-textMuted text-xs uppercase tracking-wider">Photo</Text>
+            <Pressable
+              onPress={handlePickImage}
+              disabled={uploadingImage}
+              className="mt-2 bg-white border border-gray-200 rounded-2xl items-center justify-center overflow-hidden"
+              style={{ height: 160 }}
+            >
+              {uploadingImage ? (
+                <ActivityIndicator color="#16A34A" />
+              ) : imageLocalUri || productImageUrl(imagePath) ? (
+                <Image
+                  source={{ uri: imageLocalUri ?? productImageUrl(imagePath) ?? "" }}
+                  style={{ width: "100%", height: "100%" }}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View className="items-center">
+                  <ImagePlus size={28} color="#9CA3AF" strokeWidth={2} />
+                  <Text className="text-textMuted text-sm mt-2">Add a photo</Text>
+                </View>
+              )}
+            </Pressable>
+            {(imageLocalUri || imagePath) && !uploadingImage ? (
+              <View className="flex-row mt-2">
+                <Pressable onPress={handlePickImage} className="mr-4" hitSlop={6}>
+                  <Text className="text-primary text-sm font-medium">Change</Text>
+                </Pressable>
+                <Pressable onPress={handleRemoveImage} hitSlop={6}>
+                  <Text className="text-textMuted text-sm font-medium">Remove</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">Name</Text>
             <TextInput
               value={name}
               onChangeText={setName}

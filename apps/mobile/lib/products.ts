@@ -54,6 +54,7 @@ export interface ProductUpdate {
   price_kobo: number;
   stock_quantity: number;
   status: ProductStatus;
+  image_path?: string | null;
 }
 
 // Owner-scoped update. RLS policy products_update_by_owner enforces ownership
@@ -69,6 +70,7 @@ export async function updateProduct(
       price_kobo: patch.price_kobo,
       stock_quantity: patch.stock_quantity,
       status: patch.status,
+      ...(patch.image_path !== undefined ? { image_path: patch.image_path } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
