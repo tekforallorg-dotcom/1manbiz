@@ -1,29 +1,32 @@
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { ImagePlus } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  ScrollView,
-  Pressable,
-  TextInput,
   ActivityIndicator,
   Alert,
   Image,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { ScreenHeader } from "../../../components/screen-header";
 import { QtyStepper } from "../../../components/qty-stepper";
+import { ScreenHeader } from "../../../components/screen-header";
+import { getActiveBusinessId } from "../../../lib/business";
+import { formatNaira } from "../../../lib/format";
+import {
+  pickAndUploadProductImage,
+  productImageUrl,
+} from "../../../lib/product-image";
 import {
   fetchProduct,
   updateProduct,
   type Product,
   type ProductStatus,
 } from "../../../lib/products";
-import { formatNaira } from "../../../lib/format";
 import { useSession } from "../../../lib/session";
-import { getActiveBusinessId } from "../../../lib/business";
-import { pickAndUploadProductImage, productImageUrl } from "../../../lib/product-image";
-import { ImagePlus } from "lucide-react-native";
 
 export default function EditProductScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -52,7 +55,9 @@ export default function EditProductScreen() {
       const bid = await getActiveBusinessId(userId);
       if (!cancelled) setBusinessId(bid);
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [userId]);
 
   useEffect(() => {
@@ -92,9 +97,13 @@ export default function EditProductScreen() {
 
   const handlePickImage = async () => {
     if (uploadingImage) return;
-    const bid = businessId ?? (userId ? await getActiveBusinessId(userId) : null);
+    const bid =
+      businessId ?? (userId ? await getActiveBusinessId(userId) : null);
     if (!bid) {
-      Alert.alert("No business", "Could not find your active business yet. Try again in a moment.");
+      Alert.alert(
+        "No business",
+        "Could not find your active business yet. Try again in a moment.",
+      );
       return;
     }
     setUploadingImage(true);
@@ -122,7 +131,9 @@ export default function EditProductScreen() {
       price_kobo: priceKobo,
       stock_quantity: stock,
       status,
-      ...(imagePath !== (product?.image_path ?? null) ? { image_path: imagePath } : {}),
+      ...(imagePath !== (product?.image_path ?? null)
+        ? { image_path: imagePath }
+        : {}),
     });
     setSaving(false);
     if (!result.ok) {
@@ -147,10 +158,16 @@ export default function EditProductScreen() {
       ) : (
         <>
           <ScrollView
-            contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 140, paddingTop: 8 }}
+            contentContainerStyle={{
+              paddingHorizontal: 24,
+              paddingBottom: 140,
+              paddingTop: 8,
+            }}
             keyboardShouldPersistTaps="handled"
           >
-            <Text className="text-textMuted text-xs uppercase tracking-wider">Photo</Text>
+            <Text className="text-textMuted text-xs uppercase tracking-wider">
+              Photo
+            </Text>
             <Pressable
               onPress={handlePickImage}
               disabled={uploadingImage}
@@ -161,29 +178,43 @@ export default function EditProductScreen() {
                 <ActivityIndicator color="#16A34A" />
               ) : imageLocalUri || productImageUrl(imagePath) ? (
                 <Image
-                  source={{ uri: imageLocalUri ?? productImageUrl(imagePath) ?? "" }}
+                  source={{
+                    uri: imageLocalUri ?? productImageUrl(imagePath) ?? "",
+                  }}
                   style={{ width: "100%", height: "100%" }}
                   resizeMode="cover"
                 />
               ) : (
                 <View className="items-center">
                   <ImagePlus size={28} color="#9CA3AF" strokeWidth={2} />
-                  <Text className="text-textMuted text-sm mt-2">Add a photo</Text>
+                  <Text className="text-textMuted text-sm mt-2">
+                    Add a photo
+                  </Text>
                 </View>
               )}
             </Pressable>
             {(imageLocalUri || imagePath) && !uploadingImage ? (
               <View className="flex-row mt-2">
-                <Pressable onPress={handlePickImage} className="mr-4" hitSlop={6}>
-                  <Text className="text-primary text-sm font-medium">Change</Text>
+                <Pressable
+                  onPress={handlePickImage}
+                  className="mr-4"
+                  hitSlop={6}
+                >
+                  <Text className="text-primary text-sm font-medium">
+                    Change
+                  </Text>
                 </Pressable>
                 <Pressable onPress={handleRemoveImage} hitSlop={6}>
-                  <Text className="text-textMuted text-sm font-medium">Remove</Text>
+                  <Text className="text-textMuted text-sm font-medium">
+                    Remove
+                  </Text>
                 </Pressable>
               </View>
             ) : null}
 
-            <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">Name</Text>
+            <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">
+              Name
+            </Text>
             <TextInput
               value={name}
               onChangeText={setName}
@@ -192,7 +223,9 @@ export default function EditProductScreen() {
               className="mt-2 bg-white border border-gray-200 rounded-2xl px-4 py-3 text-text text-base"
             />
 
-            <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">Price (NGN)</Text>
+            <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">
+              Price (NGN)
+            </Text>
             <TextInput
               value={priceText}
               onChangeText={(t) => setPriceText(t.replace(/[^0-9]/g, ""))}
@@ -201,15 +234,26 @@ export default function EditProductScreen() {
               keyboardType="number-pad"
               className="mt-2 bg-white border border-gray-200 rounded-2xl px-4 py-3 text-text text-base"
             />
-            <Text className="text-textMuted text-xs mt-1">{formatNaira(priceKobo)}</Text>
+            <Text className="text-textMuted text-xs mt-1">
+              {formatNaira(priceKobo)}
+            </Text>
 
-            <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">Stock</Text>
+            <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">
+              Stock
+            </Text>
             <View className="mt-2 flex-row items-center justify-between bg-white border border-gray-200 rounded-2xl px-4 py-3">
               <Text className="text-text text-base">Quantity in stock</Text>
-              <QtyStepper value={stock} onChange={setStock} min={0} max={99999} />
+              <QtyStepper
+                value={stock}
+                onChange={setStock}
+                min={0}
+                max={99999}
+              />
             </View>
 
-            <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">Status</Text>
+            <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">
+              Status
+            </Text>
             <View className="mt-2 flex-row bg-gray-100 rounded-full p-1">
               {(["active", "archived"] as ProductStatus[]).map((s) => {
                 const on = status === s;
@@ -224,7 +268,8 @@ export default function EditProductScreen() {
                   >
                     <Text
                       className={
-                        "text-sm font-medium " + (on ? "text-text" : "text-textMuted")
+                        "text-sm font-medium " +
+                        (on ? "text-text" : "text-textMuted")
                       }
                     >
                       {s === "active" ? "Active" : "Archived"}
@@ -252,7 +297,9 @@ export default function EditProductScreen() {
               {saving ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <Text className="text-white text-base font-semibold">Save changes</Text>
+                <Text className="text-white text-base font-semibold">
+                  Save changes
+                </Text>
               )}
             </Pressable>
           </View>

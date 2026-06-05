@@ -4,7 +4,7 @@ import { startOfTodayIso } from "./format";
 export type OrderStatus = "pending" | "paid" | "cancelled";
 
 export interface DashboardTiles {
-  revenueTodayKobo: number | null;   // null = query failed; render ", "
+  revenueTodayKobo: number | null;   // null = query failed
   ordersTodayCount: number | null;
   pendingCount: number | null;
   activeProductsCount: number | null;
