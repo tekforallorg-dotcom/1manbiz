@@ -5,6 +5,9 @@ import {
   Receipt,
   Calendar,
   Package,
+  Users,
+  FileText,
+  LineChart,
   Bot,
   Settings,
 } from "lucide-react-native";
@@ -18,15 +21,15 @@ export type NavItem = {
   icon: IconType;
 };
 
-// Single source of truth for mobile destinations. The bottom bar renders PINNED;
-// the drawer renders the full list. route is a plain string so it can be compared
-// against usePathname(); it is cast to Href at the router.push call site.
 export const NAV_ITEMS: NavItem[] = [
   { name: "home", label: "Home", route: "/home", icon: House },
   { name: "conversations", label: "Chats", route: "/conversations", icon: MessageCircle },
   { name: "orders", label: "Orders", route: "/orders", icon: Receipt },
   { name: "bookings", label: "Bookings", route: "/bookings", icon: Calendar },
   { name: "inventory", label: "Inventory", route: "/inventory", icon: Package },
+  { name: "customers", label: "Customers", route: "/customers", icon: Users },
+  { name: "receipts", label: "Receipts", route: "/receipts", icon: FileText },
+  { name: "insights", label: "Insights", route: "/insights", icon: LineChart },
   { name: "bizbot", label: "BizBot", route: "/bizbot", icon: Bot },
   { name: "settings", label: "Settings", route: "/settings", icon: Settings },
 ];

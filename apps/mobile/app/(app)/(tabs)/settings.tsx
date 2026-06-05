@@ -1,38 +1,235 @@
-import { View, Text, Pressable, Alert } from "react-native";
+import { useCallback, useState } from "react";
+import {
+  View, Text, ScrollView, Pressable, TextInput, Switch, ActivityIndicator, Alert,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "expo-router";
+
 import { useSession } from "../../../lib/session";
+import { getActiveBusinessId } from "../../../lib/business";
+import { supabase } from "../../../lib/supabase";
+
+type AiMode = "off" | "assisted" | "semi" | "autonomous";
+type AiTone = "friendly" | "formal" | "playful";
+
+const MODE_OPTIONS: { value: AiMode; label: string }[] = [
+  { value: "off", label: "Off" },
+  { value: "assisted", label: "Assisted" },
+  { value: "semi", label: "Semi" },
+  { value: "autonomous", label: "Auto" },
+];
+const MODE_HELP: Record<AiMode, string> = {
+  off: "BizBot stays silent. You handle every reply.",
+  assisted: "BizBot writes a draft for every chat. You review and send.",
+  semi: "BizBot sends routine replies and drafts the tricky ones for you.",
+  autonomous: "BizBot replies on its own when it is confident.",
+};
+const TONE_OPTIONS: { value: AiTone; label: string }[] = [
+  { value: "friendly", label: "Friendly" },
+  { value: "formal", label: "Formal" },
+  { value: "playful", label: "Playful" },
+];
+
+type BizRow = {
+  name: string;
+  tagline: string | null;
+  whatsapp_number: string | null;
+  ai_mode: AiMode;
+  ai_tone: AiTone;
+  ai_language: string;
+  catalogue_active: boolean;
+};
 
 export default function SettingsScreen() {
-  const { signOut } = useSession();
+  const { session } = useSession();
+  const userId = session?.user?.id;
 
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-    } catch (err) {
-      console.error("[settings] sign out error:", err);
-      Alert.alert("Sign out failed", "Please try again.");
+  const [businessId, setBusinessId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [name, setName] = useState("");
+  const [tagline, setTagline] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [mode, setMode] = useState<AiMode>("assisted");
+  const [tone, setTone] = useState<AiTone>("friendly");
+  const [language, setLanguage] = useState("");
+  const [catalogueActive, setCatalogueActive] = useState(true);
+
+  const load = useCallback(async () => {
+    if (!userId) return;
+    const id = await getActiveBusinessId(userId);
+    if (!id) { setBusinessId(null); return; }
+    setBusinessId(id);
+    const { data } = await supabase
+      .from("businesses")
+      .select("name, tagline, whatsapp_number, ai_mode, ai_tone, ai_language, catalogue_active")
+      .eq("id", id)
+      .maybeSingle();
+    if (data) {
+      const b = data as BizRow;
+      setName(b.name ?? "");
+      setTagline(b.tagline ?? "");
+      setWhatsapp(b.whatsapp_number ?? "");
+      setMode(b.ai_mode);
+      setTone(b.ai_tone);
+      setLanguage(b.ai_language ?? "");
+      setCatalogueActive(b.catalogue_active);
     }
+  }, [userId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      setLoading(true);
+      load()
+        .catch((err) => console.error("[settings] load error:", err))
+        .finally(() => { if (!cancelled) setLoading(false); });
+      return () => { cancelled = true; };
+    }, [load]),
+  );
+
+  const save = async () => {
+    if (!businessId) return;
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      Alert.alert("Settings", "Business name cannot be empty.");
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase
+      .from("businesses")
+      .update({
+        name: trimmedName,
+        tagline: tagline.trim() || null,
+        ai_mode: mode,
+        ai_tone: tone,
+        ai_language: language.trim() || "English",
+        catalogue_active: catalogueActive,
+      })
+      .eq("id", businessId);
+    setSaving(false);
+    Alert.alert("Settings", error ? "Could not save. Please try again." : "Saved.");
+  };
+
+  const signOut = () => {
+    supabase.auth.signOut().catch((err) => console.error("[settings] sign out error:", err));
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
-      <View className="px-6 pt-8">
+    <SafeAreaView className="flex-1 bg-background" edges={["top"]}>
+      <View className="px-6 pt-4 pb-3">
         <Text className="text-text text-3xl font-bold">Settings</Text>
-        <Text className="text-textMuted text-base mt-1">Account and preferences</Text>
+        <Text className="text-textMuted text-base mt-1">Your business and BizBot</Text>
       </View>
 
-      <View className="flex-1 px-6 pt-12">
-        <Pressable
-          onPress={handleSignOut}
-          className="bg-white border border-gray-200 rounded-2xl px-5 py-4 active:opacity-60"
+      {loading ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator color="#9CA3AF" />
+        </View>
+      ) : !businessId ? (
+        <View className="px-6 pt-8">
+          <Text className="text-text text-base font-medium">No business found</Text>
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 48 }}
+          keyboardShouldPersistTaps="handled"
         >
-          <Text className="text-text text-base font-medium">Sign out</Text>
-        </Pressable>
+          <Text className="text-textMuted text-xs uppercase tracking-wider mt-2">BizBot mode</Text>
+          <View className="flex-row mt-2 bg-gray-100 rounded-2xl p-1">
+            {MODE_OPTIONS.map((opt) => {
+              const active = mode === opt.value;
+              return (
+                <Pressable
+                  key={opt.value}
+                  onPress={() => setMode(opt.value)}
+                  className={"flex-1 py-2.5 rounded-xl items-center active:opacity-80 " + (active ? "bg-primary" : "")}
+                >
+                  <Text className={"text-sm font-medium " + (active ? "text-white" : "text-textMuted")}>{opt.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text className="text-textMuted text-sm mt-2">{MODE_HELP[mode]}</Text>
 
-        <Text className="text-textMuted text-xs mt-3">
-          Account settings, notifications, and billing arrive in later slices.
-        </Text>
-      </View>
+          <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">Tone</Text>
+          <View className="flex-row mt-2 bg-gray-100 rounded-2xl p-1">
+            {TONE_OPTIONS.map((opt) => {
+              const active = tone === opt.value;
+              return (
+                <Pressable
+                  key={opt.value}
+                  onPress={() => setTone(opt.value)}
+                  className={"flex-1 py-2.5 rounded-xl items-center active:opacity-80 " + (active ? "bg-primary" : "")}
+                >
+                  <Text className={"text-sm font-medium " + (active ? "text-white" : "text-textMuted")}>{opt.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">Language</Text>
+          <TextInput
+            value={language}
+            onChangeText={setLanguage}
+            placeholder="e.g. English"
+            placeholderTextColor="#9CA3AF"
+            className="mt-2 bg-white border border-gray-200 rounded-2xl px-4 py-3 text-text text-base"
+          />
+
+          <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">Business name</Text>
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            placeholder="Business name"
+            placeholderTextColor="#9CA3AF"
+            className="mt-2 bg-white border border-gray-200 rounded-2xl px-4 py-3 text-text text-base"
+          />
+
+          <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">Tagline</Text>
+          <TextInput
+            value={tagline}
+            onChangeText={setTagline}
+            placeholder="Short tagline (optional)"
+            placeholderTextColor="#9CA3AF"
+            className="mt-2 bg-white border border-gray-200 rounded-2xl px-4 py-3 text-text text-base"
+          />
+
+          <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">WhatsApp number</Text>
+          <View className="mt-2 bg-white border border-gray-200 rounded-2xl px-4 py-3">
+            <Text className="text-text text-base">{whatsapp || "Not connected"}</Text>
+            <Text className="text-textMuted text-xs mt-1">Manage your WhatsApp connection on the web dashboard.</Text>
+          </View>
+
+          <View className="mt-6 bg-white border border-gray-200 rounded-2xl px-4 py-3 flex-row items-center justify-between">
+            <View className="flex-1 mr-3">
+              <Text className="text-text text-base font-medium">Catalogue active</Text>
+              <Text className="text-textMuted text-xs mt-0.5">Show your public catalogue to customers.</Text>
+            </View>
+            <Switch
+              value={catalogueActive}
+              onValueChange={setCatalogueActive}
+              trackColor={{ true: "#00D26A", false: "#D1D5DB" }}
+            />
+          </View>
+
+          <Pressable
+            onPress={save}
+            disabled={saving}
+            className="mt-8 bg-primary rounded-2xl py-4 items-center active:opacity-80"
+          >
+            {saving ? <ActivityIndicator color="#FFFFFF" /> : <Text className="text-white text-base font-semibold">Save changes</Text>}
+          </Pressable>
+
+          <Pressable
+            onPress={signOut}
+            className="mt-3 bg-white border border-gray-200 rounded-2xl py-4 items-center active:opacity-60"
+          >
+            <Text className="text-red-600 text-base font-semibold">Sign out</Text>
+          </Pressable>
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }

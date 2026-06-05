@@ -14,7 +14,6 @@ export default function TabsLayout() {
         screenOptions={{ headerShown: false }}
         tabBar={(props) => (
           <BottomBar
-            // props is react-navigation BottomTabBarProps; we read state/navigation only.
             bar={props as unknown as BottomBarNav}
             onMenu={() => setDrawerOpen(true)}
             menuActive={drawerOpen}
@@ -26,6 +25,9 @@ export default function TabsLayout() {
         <Tabs.Screen name="orders" />
         <Tabs.Screen name="bookings" />
         <Tabs.Screen name="inventory" />
+        <Tabs.Screen name="customers" />
+        <Tabs.Screen name="receipts" />
+        <Tabs.Screen name="insights" />
         <Tabs.Screen name="bizbot" />
         <Tabs.Screen name="settings" />
       </Tabs>
