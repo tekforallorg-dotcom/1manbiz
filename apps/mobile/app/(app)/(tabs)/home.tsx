@@ -6,8 +6,8 @@ import {
   ChevronRight,
   ShoppingBag,
   Package,
-  MessageCircle,
-  Receipt,
+  Settings,
+  LineChart,
   type LucideIcon,
 } from "lucide-react-native";
 import { colors as designColors } from "@1manbiz/design";
@@ -64,7 +64,7 @@ function buildSummary(s: DashboardSummary | null): string {
 }
 
 type QuickAction = {
-  key: "order" | "product" | "chats" | "receipt";
+  key: "order" | "product" | "settings" | "insights";
   label: string;
   hint: string;
   icon: LucideIcon;
@@ -74,8 +74,8 @@ type QuickAction = {
 const QUICK_ACTIONS: QuickAction[] = [
   { key: "order", label: "Create order", hint: "Start a new sale", icon: ShoppingBag, primary: true },
   { key: "product", label: "Add product", hint: "Update your catalogue", icon: Package },
-  { key: "chats", label: "Open chats", hint: "View conversations", icon: MessageCircle },
-  { key: "receipt", label: "Send receipt", hint: "Share proof of payment", icon: Receipt },
+  { key: "settings", label: "Settings", hint: "Business and BizBot", icon: Settings },
+  { key: "insights", label: "Insights", hint: "Sales and trends", icon: LineChart },
 ];
 
 export default function HomeScreen() {
@@ -227,8 +227,8 @@ export default function HomeScreen() {
                       onPress={() => {
                         if (a.key === "order") router.push("/orders/new");
                         else if (a.key === "product") router.push("/products/new");
-                        else if (a.key === "chats") router.push("/conversations");
-                        else router.push("/receipts");
+                        else if (a.key === "settings") router.push("/settings");
+                        else router.push("/insights");
                       }}
                       className="bg-white rounded-3xl p-4 active:opacity-80"
                       style={CARD_SHADOW}
