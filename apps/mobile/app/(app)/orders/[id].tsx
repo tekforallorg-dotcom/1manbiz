@@ -16,6 +16,7 @@ import { ConfirmSheet } from "../../../components/confirm-sheet";
 import { LineItemRow } from "../../../components/line-item-row";
 import { colors as designColors } from "@1manbiz/design";
 import { ORDER_SOURCE_LABEL } from "@1manbiz/shared";
+import { PaymentLinkButton } from "../../../components/payment-link-button";
 
 const STATUS_STYLES = {
   paid:      { bg: "bg-green-50",  text: "text-green-700", label: "Paid" },
@@ -186,6 +187,13 @@ export default function OrderDetailScreen() {
 
       <View className="absolute left-0 right-0 bottom-0 px-6 pb-6 pt-3 bg-background border-t border-gray-100">
         {order.status === "pending" ? (
+          <View style={{ gap: 10 }}>
+            <PaymentLinkButton
+              orderId={order.id}
+              customerName={order.customer_name}
+              customerPhone={order.customer_phone}
+              subtotalKobo={order.subtotal_kobo}
+            />
           <Pressable
             onPress={() => setConfirmingPaid(true)}
             disabled={marking}
@@ -199,6 +207,7 @@ export default function OrderDetailScreen() {
               </Text>
             )}
           </Pressable>
+          </View>
         ) : order.status === "paid" && order.receipt_code ? (
           <Pressable
             onPress={handleViewReceipt}
