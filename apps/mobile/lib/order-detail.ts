@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import type { OrderStatus } from "./dashboard";
+import { API_BASE_URL } from "./config";
 
 export type OrderSource = "manual" | "whatsapp" | "instagram" | "catalogue" | "whatsapp_ai";
 
@@ -69,14 +70,36 @@ export async function fetchOrderDetail(orderId: string): Promise<OrderDetail | n
 // Mark order as paid. The DB trigger generates receipt_code on this transition.
 // Caller should refetch via fetchOrderDetail after success to get the new code.
 export async function markOrderPaid(orderId: string): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase
-    .from("orders")
-    .update({ status: "paid", paid_at: new Date().toISOString() })
-    .eq("id", orderId);
+  // Routed through the server so the paid transition also auto-sends the
+  // receipt (the mobile twin of the web Mark paid). A direct DB update from the
+  // client would flip status but never run the server-side receipt send.
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) return { ok: false, error: "You are not signed in." };
 
-  if (error) {
-    console.error("[order-detail] mark paid error:", error);
-    return { ok: false, error: error.message };
+  let res: Response;
+  try {
+    res = await fetch(API_BASE_URL + "/api/orders/mark-paid", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token,
+      },
+      body: JSON.stringify({ orderId }),
+    });
+  } catch {
+    return { ok: false, error: "Network error. Check your connection and try again." };
+  }
+
+  let json: { ok?: boolean; error?: string };
+  try {
+    json = (await res.json()) as typeof json;
+  } catch {
+    return { ok: false, error: "Unexpected response from the server." };
+  }
+
+  if (!res.ok || !json.ok) {
+    return { ok: false, error: json.error ?? "Could not mark the order as paid." };
   }
   return { ok: true };
 }
