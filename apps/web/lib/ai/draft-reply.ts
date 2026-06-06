@@ -7,11 +7,12 @@
  * business KNOWLEDGE. Returns { reply, confidence }; unclear confidence defaults
  * to "low" so the autonomous gate suppresses.
  *
- * Bookings are capability-gated (offersBookings, default false). When enabled,
- * the prompt gains a booking intent and a booking ACTION (create | edit |
- * cancel) plus a CURRENT BOOKING context line so the model edits the existing
- * appointment instead of creating a duplicate. The server executes the action
- * and composes the authoritative confirmation; the model never charges money.
+ * Bookings are capability-gated (offersBookings) and orders are capability-gated
+ * (offersOrders), both default false. When enabled, the prompt gains the
+ * matching action plus a CURRENT BOOKING / CURRENT ORDER context line so the
+ * model edits the existing entity instead of duplicating or looping. The server
+ * executes the action and composes the authoritative reply; the model never
+ * sets money and never marks anything paid.
  */
 
 export const REPLY_MODEL = "claude-haiku-4-5-20251001";
@@ -44,8 +45,24 @@ export interface BookingAction {
   title?: string;     // create/edit label
 }
 
+export interface OrderActionItem {
+  name: string;
+  qty: number;
+}
+
+export interface OrderAction {
+  kind: "create" | "add_item" | "remove_item" | "set_quantity" | "cancel";
+  items: OrderActionItem[];
+}
+
 export type DraftReplyResult =
-  | { ok: true; reply: string; confidence: "high" | "low"; bookingAction?: BookingAction }
+  | {
+      ok: true;
+      reply: string;
+      confidence: "high" | "low";
+      bookingAction?: BookingAction;
+      orderAction?: OrderAction;
+    }
   | { ok: false; error: string };
 
 function extractText(data: unknown): string {
@@ -84,12 +101,16 @@ export async function draftReply(args: {
   language: string;
   offersBookings?: boolean;
   currentBooking?: { title: string; whenLabel: string } | null;
+  offersOrders?: boolean;
+  currentOrder?: { label: string } | null;
 }): Promise<DraftReplyResult> {
   const { apiKey, messages, catalog, tone, language } = args;
   const deliveryZones = args.deliveryZones ?? [];
   const knowledgeItems = args.knowledgeItems ?? [];
   const offersBookings = args.offersBookings ?? false;
   const currentBooking = args.currentBooking ?? null;
+  const offersOrders = args.offersOrders ?? false;
+  const currentOrder = args.currentOrder ?? null;
 
   const lines: string[] = [];
   let latest = "";
@@ -128,13 +149,22 @@ export async function draftReply(args: {
       ? knowledgeItems.map((k) => "- " + k.title + ": " + k.content).join("\n")
       : "(no policies or extra info provided)";
 
-  const intentList = offersBookings
-    ? "product, delivery, policy, order, booking, greeting, other"
-    : "product, delivery, policy, order, greeting, other";
+  const intentList =
+    "product, delivery, policy, order, " + (offersBookings ? "booking, " : "") + "greeting, other";
 
   const bookingSourceLine = offersBookings
     ? "    booking -> none (schedule, change, or cancel an appointment: book me for, can I come Friday 2pm, change my booking, cancel my appointment)\n"
     : "";
+
+  const orderRule = offersOrders
+    ? "- order intent, set the order object and reply (the customer is buying products):\n" +
+      "    If there is NO current order and the customer names item(s) from CATALOG: action 'create', items = each product with its quantity, using the CATALOG name EXACTLY. Reply confirming the items and the total and that the shop owner will send the payment link.\n" +
+      "    If there IS a current order: to add an item action 'add_item' with items [{name, qty}]; to change a quantity action 'set_quantity' with items [{name, qty}] as the new total quantity; to remove an item action 'remove_item' with items [{name}]. Reply with the updated order summary.\n" +
+      "    To cancel the order: action 'cancel'.\n" +
+      "    If a current order exists and the customer asks to start a separate new order: action 'none'; say you will add to their current order or can cancel it first, and ask which.\n" +
+      "    If a requested product is not in CATALOG: action 'none'; ask them to choose from the list. Never invent a product or a price.\n" +
+      "    Never say the order is placed or paid; the shop owner sends the payment link.\n"
+    : "- order intent: confirm item, quantity, and line total from CATALOG, and ask for delivery area or name if missing. Do NOT say the order is placed; the shop owner sends the payment link.\n";
 
   const bookingRule = offersBookings
     ? "- booking intent, set the booking object:\n" +
@@ -144,9 +174,18 @@ export async function draftReply(args: {
       "    If the day or time is vague (no specific time): action 'none' and ask for a specific day and time. Never invent a time the customer did not give.\n"
     : "";
 
-  const jsonSchema = offersBookings
-    ? '{"intent":"product|delivery|policy|order|booking|greeting|other","source":"catalog|delivery|knowledge|none","already_sent":true|false,"booking":{"action":"none|create|edit|cancel","starts_at":"YYYY-MM-DDTHH:MM","title":"<short label>"},"reply":"<message to send>","confidence":"high|low"}'
-    : '{"intent":"product|delivery|policy|order|greeting|other","source":"catalog|delivery|knowledge|none","already_sent":true|false,"reply":"<message to send>","confidence":"high|low"}';
+  const bookingField = offersBookings
+    ? '"booking":{"action":"none|create|edit|cancel","starts_at":"YYYY-MM-DDTHH:MM","title":"<short label>"},'
+    : "";
+  const orderField = offersOrders
+    ? '"order":{"action":"none|create|add_item|remove_item|set_quantity|cancel","items":[{"name":"<exact catalog product name>","qty":<integer>}]},'
+    : "";
+  const intentOptions =
+    "product|delivery|policy|order|" + (offersBookings ? "booking|" : "") + "greeting|other";
+  const jsonSchema =
+    '{"intent":"' + intentOptions + '","source":"catalog|delivery|knowledge|none","already_sent":true|false,' +
+    bookingField + orderField +
+    '"reply":"<message to send>","confidence":"high|low"}';
 
   const system =
     "You are the WhatsApp assistant for a small shop. Reply to the customer's MOST RECENT message, grounded only in the shop's data.\n\n" +
@@ -168,10 +207,10 @@ export async function draftReply(args: {
     "- Lead with the actual answer in one sentence (yes or no, the price, the policy). Add only what the question needs.\n" +
     "- If already_sent is true, do NOT paste that block again; answer the new point in words and refer back ('as listed above').\n" +
     "- Quote names, prices, fees, and policies EXACTLY as written. Never invent or estimate. Never address the customer by a name unless they gave it in the conversation.\n" +
-    "- order intent: confirm item, quantity, and line total from CATALOG, and ask for delivery area or name if missing. Do NOT say the order is placed; the shop owner sends the payment link.\n" +
+    orderRule +
     bookingRule +
     "- If source is 'none' because it is a complaint, haggling, a payment claim, or a custom request, or KNOWLEDGE does not cover a policy question: reply 'Let me check with the shop and get back to you shortly' and set confidence 'low'.\n\n" +
-    "confidence: send-readiness of this reply. Set 'high' for any reply that is safe to send now: a grounded answer from the named block, a greeting, an order confirmation, or any booking create/edit/cancel or a booking clarifying question. Set 'low' ONLY when the reply is the 'let me check with the shop' holding reply (complaint, haggling, payment claim, or a policy KNOWLEDGE does not cover); those wait for the vendor.\n" +
+    "confidence: send-readiness of this reply. Set 'high' for any reply that is safe to send now: a grounded answer from the named block, a greeting, any order create/add/remove/quantity/cancel or order question, or any booking create/edit/cancel or a booking clarifying question. Set 'low' ONLY when the reply is the 'let me check with the shop' holding reply (complaint, haggling, payment claim, or a policy KNOWLEDGE does not cover); those wait for the vendor.\n" +
     "Tone: warm, brief, human, like a real shop attendant on WhatsApp. No 'Thank you for your inquiry'. No emojis unless the customer used one. " +
     "Language: '" + language + "'. Style: '" + tone + "'.\n\n" +
     "Respond with ONLY this JSON, no markdown fences, no prose:\n" +
@@ -188,10 +227,16 @@ export async function draftReply(args: {
         ? "CURRENT BOOKING: " + currentBooking.title + " on " + currentBooking.whenLabel + " (pending confirmation). Change or cancel THIS one; do not create another.\n\n"
         : "CURRENT BOOKING: none.\n\n")
     : "";
+  const currentOrderBlock = offersOrders
+    ? (currentOrder
+        ? "CURRENT ORDER: " + currentOrder.label + " (pending). Add to, change, or cancel THIS order; do not start a second one.\n\n"
+        : "CURRENT ORDER: none.\n\n")
+    : "";
 
   const user =
     nowBlock +
     currentBookingBlock +
+    currentOrderBlock +
     "CATALOG (name | price | availability):\n" +
     catalogBlock +
     "\n\nDELIVERY (area: fee (note)):\n" +
@@ -213,7 +258,7 @@ export async function draftReply(args: {
       },
       body: JSON.stringify({
         model: REPLY_MODEL,
-        max_tokens: 400,
+        max_tokens: 500,
         system,
         messages: [{ role: "user", content: user }],
       }),
@@ -267,14 +312,49 @@ export async function draftReply(args: {
     }
   }
 
+  // Parse an optional order action (only when this business offers orders).
+  let orderAction: OrderAction | undefined;
+  if (offersOrders) {
+    const op = obj.order;
+    if (typeof op === "object" && op !== null) {
+      const oo = op as Record<string, unknown>;
+      const action = oo.action;
+      const rawItems = Array.isArray(oo.items) ? oo.items : [];
+      const items: OrderActionItem[] = [];
+      for (const it of rawItems) {
+        if (typeof it !== "object" || it === null) continue;
+        const r = it as Record<string, unknown>;
+        const nm = typeof r.name === "string" ? r.name.trim() : "";
+        if (!nm) continue;
+        let qty = typeof r.qty === "number" ? Math.floor(r.qty) : 1;
+        if (!Number.isFinite(qty) || qty < 0) qty = 1;
+        items.push({ name: nm, qty });
+      }
+      const first = items.length > 0 ? items[0] : undefined;
+      if (action === "cancel") {
+        orderAction = { kind: "cancel", items: [] };
+      } else if (action === "create" && items.length > 0) {
+        orderAction = { kind: "create", items };
+      } else if (action === "add_item" && first) {
+        orderAction = { kind: "add_item", items: [first] };
+      } else if (action === "remove_item" && first) {
+        orderAction = { kind: "remove_item", items: [first] };
+      } else if (action === "set_quantity" && first) {
+        orderAction = { kind: "set_quantity", items: [first] };
+      }
+    }
+  }
+
   console.log("[ai/draft-reply] decision", {
     intent: typeof obj.intent === "string" ? obj.intent : "?",
     source: typeof obj.source === "string" ? obj.source : "?",
     already_sent: obj.already_sent === true,
     offers_bookings: offersBookings,
     booking_action: bookingAction?.kind ?? "none",
+    offers_orders: offersOrders,
+    order_action: orderAction?.kind ?? "none",
     confidence,
   });
 
-  return { ok: true, reply, confidence, bookingAction };
+  return { ok: true, reply, confidence, bookingAction, orderAction };
 }

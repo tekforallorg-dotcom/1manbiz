@@ -17,6 +17,16 @@ import {
   editBooking,
   cancelBooking,
 } from "@/lib/ai/actions/booking-actions";
+import {
+  loadCurrentOrder,
+  createOrder,
+  addItem,
+  removeItem,
+  setQuantity,
+  cancelOrder,
+  type OrderSnapshot,
+  type EditOrderResult,
+} from "@/lib/ai/actions/order-actions";
 
 /**
  * Autonomous reply loop. Called from the WhatsApp webhook after a FRESH inbound
@@ -26,10 +36,10 @@ import {
  * Guardrails:
  *  - Only acts when ai_mode = 'autonomous' (off/assisted/semi never auto-send).
  *  - Only sends high-confidence replies; low-confidence is left for the vendor.
- *  - Bookings: when the business offers them (service/hybrid), the model emits
- *    create/edit/cancel and the server executes it against the customer's next
- *    upcoming booking, then composes the confirmation from the stored row.
- *    It NEVER creates orders, marks paid, or sends payment links. Money is human.
+ *  - Bookings (service/hybrid): create/edit/cancel against the customer's next
+ *    upcoming booking. Orders (product/hybrid): create/add/remove/set-qty/cancel
+ *    against the customer's one open pending order. Both compose the reply from
+ *    the STORED result. Neither marks paid or sends a payment link. Money is human.
  *  - The reply is stored as sender_role 'ai' (excluded from future AI input).
  *  - Idempotency is the caller's responsibility (webhook only invokes on a
  *    fresh message insert), so retries do not double-reply.
@@ -50,6 +60,16 @@ function composeBookingUpdate(title: string, iso: string): string {
 }
 function composeBookingCancel(title: string): string {
   return 'Done. I have cancelled "' + title + '". Let us know if you would like to rebook.';
+}
+
+function lineText(snap: OrderSnapshot): string {
+  return snap.lines.map((l) => l.quantity + "x " + l.name).join(", ");
+}
+function composeOrderCreated(snap: OrderSnapshot): string {
+  return "Got it. Your order: " + lineText(snap) + ". Total " + formatNairaFromKobo(snap.subtotalKobo) + ". The shop will send your payment link shortly.";
+}
+function composeOrderUpdated(snap: OrderSnapshot): string {
+  return "Updated. Your order: " + lineText(snap) + ". Total " + formatNairaFromKobo(snap.subtotalKobo) + ". The shop will send your payment link shortly.";
 }
 
 export async function maybeAutoReply(args: {
@@ -75,9 +95,11 @@ export async function maybeAutoReply(args: {
   const mode = (business.ai_mode as AiMode | null) ?? "assisted";
   if (mode !== "autonomous") return;
 
-  // Booking capability: only service/hybrid businesses can take appointments.
+  // Capabilities from business_type. Service/hybrid take bookings; product/hybrid
+  // take orders. A hybrid does both; a product-only shop never schedules.
   const businessType = (business.business_type as string | null) ?? "product";
   const offersBookings = businessType === "service" || businessType === "hybrid";
+  const offersOrders = businessType === "product" || businessType === "hybrid";
 
   // Channel must be connected with usable per-tenant credentials.
   const { data: channel } = await admin
@@ -88,20 +110,28 @@ export async function maybeAutoReply(args: {
   if (!channel || channel.status !== "connected") return;
   if (!channel.meta_phone_number_id || !channel.access_token) return;
 
-  // Booking context: the customer for this conversation and their next upcoming
-  // booking, so the model edits that one instead of creating a duplicate.
+  // Transaction context: the conversation's customer, plus their current
+  // booking and/or current open order, so the model edits the real entity
+  // instead of inventing one. Database state is the truth fed to the model.
   let customerId: string | null = null;
   let currentBooking: { title: string; whenLabel: string } | null = null;
-  if (offersBookings) {
+  let currentOrderForPrompt: { label: string } | null = null;
+  if (offersBookings || offersOrders) {
     const { data: convo } = await admin
       .from("conversations")
       .select("customer_id")
       .eq("id", conversationId)
       .maybeSingle();
     customerId = (convo?.customer_id as string | null) ?? null;
-    if (customerId) {
+    if (customerId && offersBookings) {
       const cb = await loadCurrentBooking(admin, businessId, customerId);
       if (cb) currentBooking = { title: cb.title, whenLabel: whenLabel(cb.starts_at) };
+    }
+    if (customerId && offersOrders) {
+      const co = await loadCurrentOrder(admin, businessId, customerId);
+      if (co && co.lines.length > 0) {
+        currentOrderForPrompt = { label: lineText(co) + "; subtotal " + formatNairaFromKobo(co.subtotalKobo) };
+      }
     }
   }
 
@@ -158,7 +188,8 @@ export async function maybeAutoReply(args: {
   // then clear the instant the draft is ready (the message follows on send).
   void broadcastTyping(conversationId, "start");
   const result = await draftReply({
-    apiKey, messages, catalog, deliveryZones, knowledgeItems, tone, language, offersBookings, currentBooking,
+    apiKey, messages, catalog, deliveryZones, knowledgeItems, tone, language,
+    offersBookings, currentBooking, offersOrders, currentOrder: currentOrderForPrompt,
   });
   void broadcastTyping(conversationId, "stop");
   if (!result.ok) {
@@ -172,7 +203,7 @@ export async function maybeAutoReply(args: {
 
   const logDecision = async (
     outcome: "auto_sent" | "pending",
-    extra?: { kind?: string; proposal?: Record<string, unknown> },
+    extra?: { kind?: string; proposal?: Record<string, unknown>; finalOrderId?: string; itemCount?: number },
   ) => {
     try {
       await admin.from("ai_decisions").insert({
@@ -182,11 +213,12 @@ export async function maybeAutoReply(args: {
         mode: "autonomous",
         model: REPLY_MODEL,
         input_message_count: messages.length,
-        item_count: 0,
+        item_count: extra?.itemCount ?? 0,
         confidence: result.confidence,
         proposal: extra?.proposal ?? { reply: result.reply, confidence: result.confidence },
         outcome,
         outcome_at: outcome === "auto_sent" ? new Date().toISOString() : null,
+        final_order_id: extra?.finalOrderId ?? null,
       });
     } catch (e) {
       console.error("[ai/auto-reply] decision log threw", e);
@@ -198,12 +230,11 @@ export async function maybeAutoReply(args: {
     return;
   }
 
-  // Booking action: create / edit / cancel, executed against this customer's
-  // next upcoming booking. The reply is composed from the stored result so the
-  // customer message always matches reality. Failures fall back to a safe ask,
-  // never a fabricated confirmation.
+  // Execute at most one transaction action, composing the reply from the stored
+  // result. Booking takes precedence if both somehow fire; in practice the
+  // latest message resolves to one intent. Failures fall back to a safe ask.
   let bodyText = result.reply;
-  let bookedDecision: { kind: string; proposal: Record<string, unknown> } | null = null;
+  let actionDecision: { kind: string; proposal: Record<string, unknown>; finalOrderId?: string; itemCount?: number } | null = null;
 
   if (offersBookings && result.bookingAction && customerId) {
     const a = result.bookingAction;
@@ -213,7 +244,7 @@ export async function maybeAutoReply(args: {
       });
       if (created.ok) {
         bodyText = composeBookingConfirmation(a.title || "Appointment", created.startsAtIso);
-        bookedDecision = { kind: "booking", proposal: { action: "create_booking", booking_id: created.bookingId, starts_at: created.startsAtIso, title: a.title || "Appointment" } };
+        actionDecision = { kind: "booking", proposal: { action: "create_booking", booking_id: created.bookingId, starts_at: created.startsAtIso, title: a.title || "Appointment" } };
       } else {
         console.warn("[ai/auto-reply] booking create failed", created.error);
         bodyText = "Could you confirm the exact day and time you would like to come in?";
@@ -228,7 +259,7 @@ export async function maybeAutoReply(args: {
           const iso = edited.startsAtIso ?? current.starts_at;
           const title = edited.title ?? current.title;
           bodyText = composeBookingUpdate(title, iso);
-          bookedDecision = { kind: "booking", proposal: { action: "edit_booking", booking_id: current.id, starts_at: iso, title } };
+          actionDecision = { kind: "booking", proposal: { action: "edit_booking", booking_id: current.id, starts_at: iso, title } };
         } else {
           console.warn("[ai/auto-reply] booking edit failed", edited.error);
           bodyText = "I could not update that booking. Could you confirm the new day and time?";
@@ -242,10 +273,69 @@ export async function maybeAutoReply(args: {
         const cancelled = await cancelBooking(admin, current.id);
         if (cancelled.ok) {
           bodyText = composeBookingCancel(current.title);
-          bookedDecision = { kind: "booking", proposal: { action: "cancel_booking", booking_id: current.id } };
+          actionDecision = { kind: "booking", proposal: { action: "cancel_booking", booking_id: current.id } };
         } else {
           console.warn("[ai/auto-reply] booking cancel failed", cancelled.error);
           bodyText = "I could not cancel that booking. Please try again shortly.";
+        }
+      }
+    }
+  } else if (offersOrders && result.orderAction && customerId) {
+    const oa = result.orderAction;
+    if (oa.kind === "create") {
+      const created = await createOrder(admin, businessId, customerId, oa.items);
+      if (created.ok) {
+        bodyText = composeOrderCreated(created.order);
+        actionDecision = { kind: "order_proposal", finalOrderId: created.order.orderId, itemCount: created.order.lines.length, proposal: { action: "create_order", order_id: created.order.orderId, subtotal_kobo: created.order.subtotalKobo, lines: created.order.lines } };
+      } else if (created.code === "order_exists") {
+        bodyText = "You already have an open order: " + lineText(created.order) + " (total " + formatNairaFromKobo(created.order.subtotalKobo) + "). Would you like to add to it, or cancel it and start a new one?";
+      } else if (created.code === "unresolved") {
+        bodyText = "I could not find " + created.names.join(", ") + " in our list. Could you pick the exact item from what we have?";
+      } else if (created.code === "empty") {
+        bodyText = "What would you like to order?";
+      } else {
+        console.warn("[ai/auto-reply] order create failed", created.message);
+        bodyText = "I could not start that order. Please try again shortly.";
+      }
+    } else {
+      const current = await loadCurrentOrder(admin, businessId, customerId);
+      if (!current) {
+        bodyText = "You do not have an open order yet. What would you like to order?";
+      } else if (oa.kind === "cancel") {
+        const cancelled = await cancelOrder(admin, current.orderId);
+        if (cancelled.ok) {
+          bodyText = "Done. I have cancelled your order. Let us know if you would like to start a new one.";
+          actionDecision = { kind: "order_proposal", finalOrderId: current.orderId, itemCount: 0, proposal: { action: "cancel_order", order_id: current.orderId } };
+        } else {
+          console.warn("[ai/auto-reply] order cancel failed", cancelled.error);
+          bodyText = "I could not cancel that order. Please try again shortly.";
+        }
+      } else {
+        const item = oa.items[0];
+        if (!item) {
+          bodyText = "What would you like to change on your order?";
+        } else {
+          let res: EditOrderResult;
+          if (oa.kind === "add_item") res = await addItem(admin, businessId, current.orderId, item);
+          else if (oa.kind === "set_quantity") res = await setQuantity(admin, businessId, current.orderId, item);
+          else res = await removeItem(admin, businessId, current.orderId, item.name);
+
+          if (res.ok) {
+            if (res.order.lines.length === 0) {
+              bodyText = "Your order is now empty. Tell me what to add, or say cancel to drop it.";
+              actionDecision = { kind: "order_proposal", finalOrderId: res.order.orderId, itemCount: 0, proposal: { action: oa.kind, order_id: res.order.orderId } };
+            } else {
+              bodyText = composeOrderUpdated(res.order);
+              actionDecision = { kind: "order_proposal", finalOrderId: res.order.orderId, itemCount: res.order.lines.length, proposal: { action: oa.kind, order_id: res.order.orderId, subtotal_kobo: res.order.subtotalKobo, lines: res.order.lines } };
+            }
+          } else if (res.code === "unresolved") {
+            bodyText = "I could not find " + res.names.join(", ") + " in our list. Could you pick the exact item from what we have?";
+          } else if (res.code === "not_in_order") {
+            bodyText = res.names.join(", ") + " is not on your current order. Would you like me to add it?";
+          } else {
+            console.warn("[ai/auto-reply] order edit failed", res.message);
+            bodyText = "I could not update that order. Please try again shortly.";
+          }
         }
       }
     }
@@ -259,7 +349,7 @@ export async function maybeAutoReply(args: {
   });
   if (!sendResult.ok) {
     console.error("[ai/auto-reply] send failed", sendResult.error);
-    await logDecision("pending", bookedDecision ?? undefined);
+    await logDecision("pending", actionDecision ?? undefined);
     return;
   }
 
@@ -285,5 +375,5 @@ export async function maybeAutoReply(args: {
     })
     .eq("id", conversationId);
 
-  await logDecision("auto_sent", bookedDecision ?? undefined);
+  await logDecision("auto_sent", actionDecision ?? undefined);
 }
