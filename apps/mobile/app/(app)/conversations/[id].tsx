@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronLeft, ChevronRight, Send, X, Minus, Plus } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, Send, X, Minus, Plus, Phone, Calendar, Receipt as ReceiptIcon } from "lucide-react-native";
 import { colors as designColors } from "@1manbiz/design";
 import { BizBotIcon } from "../../../components/bizbot-mark";
 
@@ -23,7 +23,7 @@ import { getActiveBusinessId } from "../../../lib/business";
 import { parseOrderFromConversation, type OrderProposal } from "../../../lib/parse-order";
 import { createOrder } from "../../../lib/order-create";
 import { createCustomer } from "../../../lib/customers";
-import { formatNaira } from "../../../lib/format";
+import { formatNaira, formatDateTime } from "../../../lib/format";
 import {
   fetchConversationHeader,
   fetchMessages,
@@ -32,7 +32,8 @@ import {
   type MessageRow,
 } from "../../../lib/conversations";
 import { sendReply } from "../../../lib/messages";
-import { fetchCustomerStats, type CustomerStats } from "../../../lib/customer-stats";
+import { fetchCustomerStats, fetchOpenOrders, type CustomerStats, type OpenOrder } from "../../../lib/customer-stats";
+import { markOrderPaid } from "../../../lib/order-detail";
 import { supabase } from "../../../lib/supabase";
 import { MessageBubble } from "../../../components/message-bubble";
 import { TypingIndicator } from "../../../components/typing-indicator";
@@ -89,6 +90,12 @@ export default function ConversationThreadScreen() {
   const [customerStats, setCustomerStats] = useState<CustomerStats | null>(null);
   const [aiMode, setAiMode] = useState<string | null>(null);
   const [botTyping, setBotTyping] = useState(false);
+
+  // Open-orders sheet + profile sheet (both read-only views over real data).
+  const [ordersSheetOpen, setOrdersSheetOpen] = useState(false);
+  const [openOrders, setOpenOrders] = useState<OpenOrder[] | null>(null);
+  const [markingId, setMarkingId] = useState<string | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
   const aiModeRef = useRef<string | null>(null);
@@ -375,6 +382,34 @@ export default function ConversationThreadScreen() {
     router.push(`/orders/${result.id}`);
   }
 
+  const loadOpenOrders = useCallback(async () => {
+    const cid = header?.customer_id;
+    if (!cid) return;
+    setOpenOrders(null);
+    const list = await fetchOpenOrders(cid);
+    setOpenOrders(list);
+  }, [header?.customer_id]);
+
+  function openOrdersSheet() {
+    setOrdersSheetOpen(true);
+    void loadOpenOrders();
+  }
+
+  async function markPaidFromSheet(orderId: string) {
+    if (markingId) return;
+    setMarkingId(orderId);
+    const result = await markOrderPaid(orderId);
+    setMarkingId(null);
+    if (!result.ok) {
+      Alert.alert("Could not mark as paid", result.error ?? "Please try again.");
+      return;
+    }
+    // Refresh the sheet list and the header pills to reflect one fewer open order.
+    await loadOpenOrders();
+    const cid = header?.customer_id;
+    if (cid) fetchCustomerStats(cid).then(setCustomerStats).catch(() => {});
+  }
+
   const displayName = header?.customer_name
     ?? header?.contact_phone_e164
     ?? "Customer";
@@ -397,15 +432,22 @@ export default function ConversationThreadScreen() {
           >
             <ChevronLeft size={24} color={designColors.text} strokeWidth={2} />
           </Pressable>
-          <View className="w-9 h-9 rounded-full bg-surface-muted items-center justify-center ml-1 mr-2.5">
-            <Text className="text-text text-base font-semibold">{avatarInitial}</Text>
-          </View>
-          <View className="flex-1">
-            <Text className="text-text text-lg font-semibold" numberOfLines={1}>{displayName}</Text>
-            {showSubtitle ? (
-              <Text className="text-textMuted text-xs" numberOfLines={1}>{header?.contact_phone_e164} · WhatsApp</Text>
-            ) : null}
-          </View>
+          <Pressable
+            onPress={() => header?.customer_id && setProfileOpen(true)}
+            disabled={!header?.customer_id}
+            className="flex-row items-center flex-1 active:opacity-70"
+            hitSlop={6}
+          >
+            <View className="w-9 h-9 rounded-full bg-surface-muted items-center justify-center ml-1 mr-2.5">
+              <Text className="text-text text-base font-semibold">{avatarInitial}</Text>
+            </View>
+            <View className="flex-1">
+              <Text className="text-text text-lg font-semibold" numberOfLines={1}>{displayName}</Text>
+              {showSubtitle ? (
+                <Text className="text-textMuted text-xs" numberOfLines={1}>{header?.contact_phone_e164} · WhatsApp</Text>
+              ) : null}
+            </View>
+          </Pressable>
           {!loading && !error ? (
             <Pressable
               onPress={openDraft}
@@ -430,7 +472,7 @@ export default function ConversationThreadScreen() {
             </View>
             {customerStats.openOrders > 0 && customerStats.openOrderId ? (
               <Pressable
-                onPress={() => router.push(`/orders/${customerStats.openOrderId}`)}
+                onPress={openOrdersSheet}
                 className="flex-row items-center bg-green-50 rounded-full pl-3 pr-2 py-1.5 mb-1 active:opacity-70"
                 hitSlop={6}
               >
@@ -512,6 +554,125 @@ export default function ConversationThreadScreen() {
           </View>
         ) : null}
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={ordersSheetOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setOrdersSheetOpen(false)}
+      >
+        <View className="flex-1 justify-end bg-black/40">
+          <View className="bg-background rounded-t-3xl px-4 pt-4" style={{ paddingBottom: insets.bottom + 16, maxHeight: "80%" }}>
+            <View className="flex-row items-center justify-between mb-3">
+              <Text className="text-text text-lg font-semibold">Open orders</Text>
+              <Pressable onPress={() => setOrdersSheetOpen(false)} className="w-9 h-9 items-center justify-center rounded-full active:opacity-60" hitSlop={6}>
+                <X size={20} color={designColors.text} strokeWidth={2} />
+              </Pressable>
+            </View>
+            {openOrders === null ? (
+              <View className="items-center py-10"><ActivityIndicator color={designColors.primary} /></View>
+            ) : openOrders.length === 0 ? (
+              <Text className="text-textMuted text-sm py-6 text-center">No open orders. All settled.</Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 420 }} contentContainerStyle={{ paddingBottom: 8 }}>
+                {openOrders.map((o) => (
+                  <View key={o.id} className="bg-surface-muted rounded-2xl px-4 py-3 mb-2">
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-text text-base font-semibold">{formatNaira(o.subtotalKobo)}</Text>
+                      <Text className="text-textMuted text-xs">{formatDateTime(o.createdAt)}</Text>
+                    </View>
+                    <Text className="text-textMuted text-sm mt-0.5" numberOfLines={1}>{o.itemSummary}</Text>
+                    <View className="flex-row mt-3" style={{ gap: 8 }}>
+                      <Pressable
+                        onPress={() => { setOrdersSheetOpen(false); router.push(`/orders/${o.id}`); }}
+                        className="flex-1 bg-white border border-gray-200 rounded-xl py-2.5 items-center active:opacity-70"
+                      >
+                        <Text className="text-text text-sm font-semibold">View</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => markPaidFromSheet(o.id)}
+                        disabled={markingId === o.id}
+                        className="flex-1 bg-primary rounded-xl py-2.5 items-center active:opacity-80"
+                      >
+                        {markingId === o.id ? (
+                          <ActivityIndicator color="#FFFFFF" />
+                        ) : (
+                          <Text className="text-white text-sm font-semibold">Mark paid</Text>
+                        )}
+                      </Pressable>
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={profileOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setProfileOpen(false)}
+      >
+        <View className="flex-1 justify-end bg-black/40">
+          <View className="bg-background rounded-t-3xl px-4 pt-4" style={{ paddingBottom: insets.bottom + 16, maxHeight: "80%" }}>
+            <View className="flex-row items-center justify-between mb-3">
+              <Text className="text-text text-lg font-semibold">Customer</Text>
+              <Pressable onPress={() => setProfileOpen(false)} className="w-9 h-9 items-center justify-center rounded-full active:opacity-60" hitSlop={6}>
+                <X size={20} color={designColors.text} strokeWidth={2} />
+              </Pressable>
+            </View>
+
+            <View className="flex-row items-center mb-4">
+              <View className="w-12 h-12 rounded-full bg-surface-muted items-center justify-center mr-3">
+                <Text className="text-text text-lg font-semibold">{avatarInitial}</Text>
+              </View>
+              <View className="flex-1">
+                <Text className="text-text text-lg font-semibold" numberOfLines={1}>{displayName}</Text>
+                {header?.contact_phone_e164 ? (
+                  <View className="flex-row items-center mt-0.5">
+                    <Phone size={12} color={designColors.textMuted} strokeWidth={2} />
+                    <Text className="text-textMuted text-sm ml-1">{header.contact_phone_e164} · WhatsApp</Text>
+                  </View>
+                ) : null}
+              </View>
+            </View>
+
+            {customerStats ? (
+              <View className="bg-surface-muted rounded-2xl px-4 py-2">
+                <View className="flex-row items-center justify-between py-2 border-b border-gray-100">
+                  <Text className="text-textMuted text-sm">Total spent</Text>
+                  <Text className="text-text text-sm font-semibold">{formatNaira(customerStats.totalSpentKobo)}</Text>
+                </View>
+                <View className="flex-row items-center justify-between py-2 border-b border-gray-100">
+                  <Text className="text-textMuted text-sm">Orders</Text>
+                  <Text className="text-text text-sm font-semibold">{customerStats.totalOrders}</Text>
+                </View>
+                <Pressable
+                  onPress={() => { setProfileOpen(false); openOrdersSheet(); }}
+                  disabled={customerStats.openOrders === 0}
+                  className="flex-row items-center justify-between py-2 border-b border-gray-100 active:opacity-60"
+                >
+                  <Text className="text-textMuted text-sm">Open orders</Text>
+                  <View className="flex-row items-center">
+                    <Text className={"text-sm font-semibold " + (customerStats.openOrders > 0 ? "text-primary" : "text-text")}>{customerStats.openOrders}</Text>
+                    {customerStats.openOrders > 0 ? <ChevronRight size={14} color={designColors.primary} strokeWidth={2.5} /> : null}
+                  </View>
+                </Pressable>
+                <View className="flex-row items-center justify-between py-2">
+                  <Text className="text-textMuted text-sm">Last purchase</Text>
+                  <Text className="text-text text-sm font-semibold">
+                    {customerStats.lastPurchaseAt ? formatDateTime(customerStats.lastPurchaseAt) : "None yet"}
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <View className="items-center py-8"><ActivityIndicator color={designColors.primary} /></View>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={sheetOpen}

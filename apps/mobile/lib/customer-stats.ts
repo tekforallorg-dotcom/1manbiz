@@ -17,6 +17,51 @@ type CustomerRow = {
 };
 type OrderIdRow = { id: string };
 
+export type OpenOrder = {
+  id: string;
+  subtotalKobo: number;
+  createdAt: string;
+  itemSummary: string;
+};
+
+type OpenOrderRow = {
+  id: string;
+  subtotal_kobo: number | null;
+  created_at: string;
+  order_items: { name_snapshot: string; quantity: number }[] | null;
+};
+
+// Pending orders for one customer, newest first, with a short item summary
+// built from order_items snapshots (e.g. "2 x iPhone 17 Pro" or "iPhone + 1 more").
+export async function fetchOpenOrders(customerId: string): Promise<OpenOrder[]> {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("id, subtotal_kobo, created_at, order_items(name_snapshot, quantity)")
+    .eq("customer_id", customerId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.error("[customer-stats] open orders failed", error);
+    return [];
+  }
+  return ((data as OpenOrderRow[] | null) ?? []).map((o) => {
+    const items = o.order_items ?? [];
+    const first = items[0];
+    let itemSummary = "Order";
+    if (first) {
+      const q = first.quantity > 1 ? first.quantity + " x " : "";
+      itemSummary = q + first.name_snapshot;
+      if (items.length > 1) itemSummary += " + " + (items.length - 1) + " more";
+    }
+    return {
+      id: o.id,
+      subtotalKobo: o.subtotal_kobo ?? 0,
+      createdAt: o.created_at,
+      itemSummary,
+    };
+  });
+}
+
 export async function fetchCustomerStats(customerId: string): Promise<CustomerStats | null> {
   const { data: cust, error: custErr } = await supabase
     .from("customers")
