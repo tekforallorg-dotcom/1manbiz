@@ -8,6 +8,7 @@ import {
   Platform,
   Pressable,
   RefreshControl,
+  Share,
   ScrollView,
   Text,
   TextInput,
@@ -15,7 +16,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronLeft, ChevronRight, Send, X, Minus, Plus, Phone, Calendar, Receipt as ReceiptIcon } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, Send, X, Minus, Plus, Phone, Share2 } from "lucide-react-native";
 import { colors as designColors } from "@1manbiz/design";
 import { BizBotIcon } from "../../../components/bizbot-mark";
 
@@ -32,7 +33,8 @@ import {
   type MessageRow,
 } from "../../../lib/conversations";
 import { sendReply } from "../../../lib/messages";
-import { fetchCustomerStats, fetchOpenOrders, type CustomerStats, type OpenOrder } from "../../../lib/customer-stats";
+import { initPaymentLink } from "../../../lib/payments";
+import { fetchCustomerStats, fetchOpenOrders, updateCustomerNotes, type CustomerStats, type OpenOrder } from "../../../lib/customer-stats";
 import { markOrderPaid } from "../../../lib/order-detail";
 import { supabase } from "../../../lib/supabase";
 import { MessageBubble } from "../../../components/message-bubble";
@@ -91,11 +93,14 @@ export default function ConversationThreadScreen() {
   const [aiMode, setAiMode] = useState<string | null>(null);
   const [botTyping, setBotTyping] = useState(false);
 
-  // Open-orders sheet + profile sheet (both read-only views over real data).
+  // Open-orders sheet (with inline send-link) + editable customer profile sheet.
   const [ordersSheetOpen, setOrdersSheetOpen] = useState(false);
   const [openOrders, setOpenOrders] = useState<OpenOrder[] | null>(null);
   const [markingId, setMarkingId] = useState<string | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
   const aiModeRef = useRef<string | null>(null);
@@ -410,6 +415,38 @@ export default function ConversationThreadScreen() {
     if (cid) fetchCustomerStats(cid).then(setCustomerStats).catch(() => {});
   }
 
+  async function sendLinkFromSheet(orderId: string, amountKobo: number) {
+    if (sendingId) return;
+    setSendingId(orderId);
+    const init = await initPaymentLink(orderId);
+    setSendingId(null);
+    if (!init.ok) {
+      Alert.alert("Could not create link", init.error);
+      return;
+    }
+    const who = header?.customer_name ? "Hi " + header.customer_name + ", " : "Hi, ";
+    const amount = "NGN " + Math.round(amountKobo / 100).toLocaleString("en-NG");
+    try {
+      await Share.share({ message: who + "here is your secure payment link for " + amount + ": " + init.payUrl });
+    } catch {
+      // Share sheet dismissed; nothing to do.
+    }
+  }
+
+  async function saveNote() {
+    const cid = header?.customer_id;
+    if (!cid || savingNote) return;
+    setSavingNote(true);
+    const result = await updateCustomerNotes(cid, noteDraft.trim());
+    setSavingNote(false);
+    if (!result.ok) {
+      Alert.alert("Could not save note", result.error ?? "Please try again.");
+      return;
+    }
+    const next = noteDraft.trim().length > 0 ? noteDraft.trim() : null;
+    setCustomerStats((prev) => (prev ? { ...prev, notes: next } : prev));
+  }
+
   const displayName = header?.customer_name
     ?? header?.contact_phone_e164
     ?? "Customer";
@@ -433,7 +470,11 @@ export default function ConversationThreadScreen() {
             <ChevronLeft size={24} color={designColors.text} strokeWidth={2} />
           </Pressable>
           <Pressable
-            onPress={() => header?.customer_id && setProfileOpen(true)}
+            onPress={() => {
+              if (!header?.customer_id) return;
+              setNoteDraft(customerStats?.notes ?? "");
+              setProfileOpen(true);
+            }}
             disabled={!header?.customer_id}
             className="flex-row items-center flex-1 active:opacity-70"
             hitSlop={6}
@@ -582,7 +623,21 @@ export default function ConversationThreadScreen() {
                       <Text className="text-textMuted text-xs">{formatDateTime(o.createdAt)}</Text>
                     </View>
                     <Text className="text-textMuted text-sm mt-0.5" numberOfLines={1}>{o.itemSummary}</Text>
-                    <View className="flex-row mt-3" style={{ gap: 8 }}>
+                    <Pressable
+                      onPress={() => sendLinkFromSheet(o.id, o.subtotalKobo)}
+                      disabled={sendingId === o.id}
+                      className="bg-white border border-gray-200 rounded-xl py-2.5 items-center active:opacity-70 mt-3 flex-row justify-center"
+                    >
+                      {sendingId === o.id ? (
+                        <ActivityIndicator color={designColors.primary} />
+                      ) : (
+                        <>
+                          <Share2 size={15} color={designColors.primary} strokeWidth={2} />
+                          <Text className="text-primary text-sm font-semibold ml-1.5">Send payment link</Text>
+                        </>
+                      )}
+                    </Pressable>
+                    <View className="flex-row mt-2" style={{ gap: 8 }}>
                       <Pressable
                         onPress={() => { setOrdersSheetOpen(false); router.push(`/orders/${o.id}`); }}
                         className="flex-1 bg-white border border-gray-200 rounded-xl py-2.5 items-center active:opacity-70"
@@ -670,6 +725,28 @@ export default function ConversationThreadScreen() {
             ) : (
               <View className="items-center py-8"><ActivityIndicator color={designColors.primary} /></View>
             )}
+
+            <Text className="text-textMuted text-xs uppercase tracking-wider mt-4 mb-1.5">Notes</Text>
+            <TextInput
+              value={noteDraft}
+              onChangeText={setNoteDraft}
+              placeholder="Add a private note about this customer..."
+              placeholderTextColor={designColors.textMuted}
+              multiline
+              className="bg-surface-muted rounded-2xl px-4 py-3 text-text text-sm"
+              style={{ minHeight: 64, textAlignVertical: "top" }}
+            />
+            <Pressable
+              onPress={saveNote}
+              disabled={savingNote || noteDraft.trim() === (customerStats?.notes ?? "").trim()}
+              className={"rounded-2xl py-3 items-center mt-2 " + ((savingNote || noteDraft.trim() === (customerStats?.notes ?? "").trim()) ? "bg-borderStrong" : "bg-primary")}
+            >
+              {savingNote ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text className="text-white text-sm font-semibold">Save note</Text>
+              )}
+            </Pressable>
           </View>
         </View>
       </Modal>

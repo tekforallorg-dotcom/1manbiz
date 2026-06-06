@@ -7,6 +7,7 @@ export type CustomerStats = {
   lastPurchaseAt: string | null;
   openOrders: number;
   openOrderId: string | null;
+  notes: string | null;
 };
 
 type CustomerRow = {
@@ -14,6 +15,7 @@ type CustomerRow = {
   total_orders: number | null;
   total_spent_kobo: number | null;
   last_purchase_at: string | null;
+  notes: string | null;
 };
 type OrderIdRow = { id: string };
 
@@ -65,7 +67,7 @@ export async function fetchOpenOrders(customerId: string): Promise<OpenOrder[]> 
 export async function fetchCustomerStats(customerId: string): Promise<CustomerStats | null> {
   const { data: cust, error: custErr } = await supabase
     .from("customers")
-    .select("name, total_orders, total_spent_kobo, last_purchase_at")
+    .select("name, total_orders, total_spent_kobo, last_purchase_at, notes")
     .eq("id", customerId)
     .maybeSingle();
   if (custErr || !cust) return null;
@@ -88,5 +90,21 @@ export async function fetchCustomerStats(customerId: string): Promise<CustomerSt
     lastPurchaseAt: c.last_purchase_at ?? null,
     openOrders: rows.length,
     openOrderId,
+    notes: c.notes ?? null,
   };
+}
+
+export async function updateCustomerNotes(
+  customerId: string,
+  notes: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase
+    .from("customers")
+    .update({ notes: notes.length > 0 ? notes : null })
+    .eq("id", customerId);
+  if (error) {
+    console.error("[customer-stats] update notes failed", error);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
 }
