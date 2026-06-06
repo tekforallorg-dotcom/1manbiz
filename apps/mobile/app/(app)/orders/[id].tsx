@@ -1,10 +1,10 @@
 import { useCallback, useState } from "react";
 import {
-  View, Text, ScrollView, ActivityIndicator, Pressable, Alert, Linking,
+  View, Text, ScrollView, ActivityIndicator, Pressable, Alert, Linking, Share,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
-import { ExternalLink } from "lucide-react-native";
+import { ExternalLink, Share2 } from "lucide-react-native";
 import {
   fetchOrderDetail,
   markOrderPaid,
@@ -81,6 +81,18 @@ export default function OrderDetailScreen() {
     Linking.openURL(`${WEB_BASE}/r/${order.receipt_code}`).catch((err) =>
       console.error("[order-detail] open receipt error:", err),
     );
+  };
+
+  const handleSendReceipt = async () => {
+    if (!order?.receipt_code) return;
+    const link = `${WEB_BASE}/r/${order.receipt_code}`;
+    const who = order.customer_name ? "Hi " + order.customer_name + ", " : "";
+    const amount = "NGN " + Math.round(order.subtotal_kobo / 100).toLocaleString("en-NG");
+    try {
+      await Share.share({ message: who + "here is your receipt for " + amount + ": " + link });
+    } catch {
+      // Share sheet dismissed; nothing to do.
+    }
   };
 
   if (loading && !order) {
@@ -213,13 +225,22 @@ export default function OrderDetailScreen() {
           </Pressable>
           </View>
         ) : order.status === "paid" && order.receipt_code ? (
-          <Pressable
-            onPress={handleViewReceipt}
-            className="bg-white border border-gray-200 rounded-2xl py-4 items-center active:opacity-60 flex-row justify-center"
-          >
-            <Text className="text-text text-base font-semibold mr-2">View receipt</Text>
-            <ExternalLink size={18} color={designColors.text} />
-          </Pressable>
+          <View style={{ gap: 10 }}>
+            <Pressable
+              onPress={handleSendReceipt}
+              className="bg-primary rounded-2xl py-4 items-center active:opacity-80 flex-row justify-center"
+            >
+              <Share2 size={18} color="#FFFFFF" strokeWidth={2} />
+              <Text className="text-white text-base font-semibold ml-2">Send receipt</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleViewReceipt}
+              className="bg-white border border-gray-200 rounded-2xl py-4 items-center active:opacity-60 flex-row justify-center"
+            >
+              <Text className="text-text text-base font-semibold mr-2">View receipt</Text>
+              <ExternalLink size={18} color={designColors.text} />
+            </Pressable>
+          </View>
         ) : null}
       </View>
 
