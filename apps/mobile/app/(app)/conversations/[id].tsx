@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronLeft, ChevronRight, Send, Sparkles, X, Minus, Plus } from "lucide-react-native";
+import { Bot, ChevronLeft, ChevronRight, Send, X, Minus, Plus } from "lucide-react-native";
 import { colors as designColors } from "@1manbiz/design";
 
 import { getActiveBusinessId } from "../../../lib/business";
@@ -411,7 +411,7 @@ export default function ConversationThreadScreen() {
               className="flex-row items-center bg-primary rounded-full px-3 py-1.5 active:opacity-80"
               hitSlop={6}
             >
-              <Sparkles size={14} color="#FFFFFF" strokeWidth={2} />
+              <Bot size={16} color="#FFFFFF" strokeWidth={2} />
               <Text className="text-white text-sm font-semibold ml-1">Draft</Text>
             </Pressable>
           ) : null}
@@ -474,7 +474,7 @@ export default function ConversationThreadScreen() {
             {messages.length === 0 ? (
               <Text className="text-textMuted text-sm text-center mt-10">No messages yet.</Text>
             ) : (
-              messages.map((m) => <MessageBubble key={m.id} message={m} />)
+              messages.map((m, i) => <MessageBubble key={m.id} message={m} prev={messages[i - 1] ?? null} />)
             )}
             {botTyping ? <TypingIndicator /> : null}
           </ScrollView>
