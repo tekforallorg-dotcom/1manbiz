@@ -1,8 +1,9 @@
 import { Text, View } from "react-native";
-import { Bot, Check, CheckCheck, Clock } from "lucide-react-native";
+import { Check, CheckCheck, Clock } from "lucide-react-native";
 import { colors as designColors } from "@1manbiz/design";
 import { formatMessageTime } from "../lib/format";
 import type { MessageRow } from "../lib/conversations";
+import { BizBotLabel } from "./bizbot-mark";
 
 interface Props {
   message: MessageRow;
@@ -50,9 +51,8 @@ export function MessageBubble({ message, prev }: Props) {
       style={{ marginTop }}
     >
       {startsAiRun ? (
-        <View className="flex-row items-center mb-1 px-1">
-          <Bot size={13} color={designColors.primary} strokeWidth={2} />
-          <Text className="text-primary text-[11px] font-semibold ml-1">BizBot</Text>
+        <View className="mb-1">
+          <BizBotLabel />
         </View>
       ) : null}
 

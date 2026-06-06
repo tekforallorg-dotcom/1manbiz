@@ -15,8 +15,9 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { Bot, ChevronLeft, ChevronRight, Send, X, Minus, Plus } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, Send, X, Minus, Plus } from "lucide-react-native";
 import { colors as designColors } from "@1manbiz/design";
+import { BizBotIcon } from "../../../components/bizbot-mark";
 
 import { getActiveBusinessId } from "../../../lib/business";
 import { parseOrderFromConversation, type OrderProposal } from "../../../lib/parse-order";
@@ -411,7 +412,7 @@ export default function ConversationThreadScreen() {
               className="flex-row items-center bg-primary rounded-full px-3 py-1.5 active:opacity-80"
               hitSlop={6}
             >
-              <Bot size={16} color="#FFFFFF" strokeWidth={2} />
+              <BizBotIcon size={16} color="#FFFFFF" strokeWidth={2} />
               <Text className="text-white text-sm font-semibold ml-1">Draft</Text>
             </Pressable>
           ) : null}
