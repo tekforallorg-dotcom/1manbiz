@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     .from("messages")
     .select("sender_role, body_text, sent_at")
     .eq("conversation_id", conversationId)
-    .order("sent_at", { ascending: true })
+    .order("sent_at", { ascending: false })
     .limit(40);
   if (msgErr) {
     console.error("[ai/parse-order] messages load failed", msgErr);
@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Lookup failed" }, { status: 500 });
   }
 
-  const messages: InboundLine[] = (msgRows ?? []).map((m) => ({
+  const messages: InboundLine[] = [...(msgRows ?? [])].reverse().map((m) => ({
     sender_role: m.sender_role as InboundLine["sender_role"],
     body_text: (m.body_text as string | null) ?? "",
   }));

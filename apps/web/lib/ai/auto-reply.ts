@@ -167,7 +167,7 @@ export async function maybeAutoReply(args: {
     .from("messages")
     .select("sender_role, body_text, sent_at")
     .eq("conversation_id", conversationId)
-    .order("sent_at", { ascending: true })
+    .order("sent_at", { ascending: false })
     .limit(40);
   const { data: prodRows } = await admin
     .from("products")
@@ -189,7 +189,7 @@ export async function maybeAutoReply(args: {
     .eq("status", "active")
     .order("sort_order", { ascending: true });
 
-  const messages: ReplyLine[] = (msgRows ?? []).map((m) => ({
+  const messages: ReplyLine[] = [...(msgRows ?? [])].reverse().map((m) => ({
     sender_role: m.sender_role as ReplyLine["sender_role"],
     body_text: (m.body_text as string | null) ?? "",
   }));
