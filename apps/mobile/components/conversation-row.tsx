@@ -29,6 +29,19 @@ function channelLabel(channel: string): string {
   return channel.charAt(0).toUpperCase() + channel.slice(1);
 }
 
+function compactNaira(kobo: number): string {
+  const naira = Math.round((kobo ?? 0) / 100);
+  if (naira >= 1000000) {
+    const m = naira / 1000000;
+    return "\u20A6" + (m % 1 === 0 ? m.toFixed(0) : m.toFixed(1)) + "M";
+  }
+  if (naira >= 1000) {
+    const k = naira / 1000;
+    return "\u20A6" + (k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)) + "k";
+  }
+  return "\u20A6" + String(naira);
+}
+
 type Props = { conversation: ConversationListItem };
 
 export function ConversationRow({ conversation: c }: Props) {
@@ -75,7 +88,14 @@ export function ConversationRow({ conversation: c }: Props) {
           ) : null}
         </View>
 
-        {c.channel ? <Text className="text-textMuted text-xs mt-1">{channelLabel(c.channel)}</Text> : null}
+        <View className="flex-row items-center mt-1">
+          {c.channel ? <Text className="text-textMuted text-xs">{channelLabel(c.channel)}</Text> : null}
+          {c.unpaid_count > 0 ? (
+            <View className={"bg-amber-50 rounded-full px-2 py-0.5 " + (c.channel ? "ml-2" : "")}>
+              <Text className="text-amber-700 text-[11px] font-semibold">{"Unpaid " + compactNaira(c.unpaid_kobo)}</Text>
+            </View>
+          ) : null}
+        </View>
       </View>
     </Pressable>
   );

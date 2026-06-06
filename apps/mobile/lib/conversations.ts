@@ -6,6 +6,7 @@ export type MessageSenderRole = "customer" | "vendor" | "ai";
 
 export interface ConversationListItem {
   id: string;
+  customer_id: string | null;
   customer_name: string | null;
   contact_phone_e164: string | null;
   channel: string;
@@ -14,6 +15,8 @@ export interface ConversationListItem {
   last_message_direction: MessageDirection | null;
   unread_count: number;
   status: ConversationStatus;
+  unpaid_count: number;
+  unpaid_kobo: number;
 }
 
 export interface ConversationHeader {
@@ -41,7 +44,7 @@ export async function fetchConversations(businessId: string): Promise<Conversati
   const { data, error } = await supabase
     .from("conversations")
     .select(
-      `id, contact_phone_e164, channel, last_message_at, last_message_preview, last_message_direction, unread_count, status,
+      `id, customer_id, contact_phone_e164, channel, last_message_at, last_message_preview, last_message_direction, unread_count, status,
        customer:customers(name)`,
     )
     .eq("business_id", businessId)
@@ -53,10 +56,11 @@ export async function fetchConversations(businessId: string): Promise<Conversati
     return [];
   }
 
-  return (data ?? []).map((row: any) => {
+  const items: ConversationListItem[] = (data ?? []).map((row: any) => {
     const customer = Array.isArray(row.customer) ? row.customer[0] : row.customer;
     return {
       id: row.id,
+      customer_id: row.customer_id ?? null,
       customer_name: customer?.name ?? null,
       contact_phone_e164: row.contact_phone_e164,
       channel: row.channel,
@@ -65,8 +69,44 @@ export async function fetchConversations(businessId: string): Promise<Conversati
       last_message_direction: row.last_message_direction,
       unread_count: row.unread_count,
       status: row.status,
+      unpaid_count: 0,
+      unpaid_kobo: 0,
     };
   });
+
+  // Flag who still owes money in one extra query (no N+1). Degrade to zero.
+  const customerIds = Array.from(
+    new Set(items.map((i) => i.customer_id).filter((v): v is string => !!v)),
+  );
+  if (customerIds.length > 0) {
+    const { data: pending, error: pErr } = await supabase
+      .from("orders")
+      .select("customer_id, subtotal_kobo")
+      .eq("business_id", businessId)
+      .eq("status", "pending")
+      .in("customer_id", customerIds);
+    if (pErr) {
+      console.error("[conversations] unpaid enrich failed", pErr);
+    } else {
+      const byCustomer = new Map<string, { count: number; kobo: number }>();
+      for (const r of (pending ?? []) as { customer_id: string; subtotal_kobo: number }[]) {
+        const cur = byCustomer.get(r.customer_id) ?? { count: 0, kobo: 0 };
+        cur.count += 1;
+        cur.kobo += r.subtotal_kobo ?? 0;
+        byCustomer.set(r.customer_id, cur);
+      }
+      for (const item of items) {
+        if (!item.customer_id) continue;
+        const agg = byCustomer.get(item.customer_id);
+        if (agg) {
+          item.unpaid_count = agg.count;
+          item.unpaid_kobo = agg.kobo;
+        }
+      }
+    }
+  }
+
+  return items;
 }
 
 export async function fetchConversationHeader(
