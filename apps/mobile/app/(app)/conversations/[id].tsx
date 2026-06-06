@@ -92,6 +92,9 @@ export default function ConversationThreadScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const aiModeRef = useRef<string | null>(null);
   const botTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // True while the user is at or near the bottom. New content sticks to the
+  // latest message; opening a chat starts true so it lands at the bottom.
+  const stickToBottomRef = useRef(true);
 
   const insets = useSafeAreaInsets();
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -452,6 +455,14 @@ export default function ConversationThreadScreen() {
             ref={scrollRef}
             className="flex-1 px-4"
             contentContainerStyle={{ paddingTop: 12, paddingBottom: 12 }}
+            onContentSizeChange={() => {
+              if (stickToBottomRef.current) scrollRef.current?.scrollToEnd({ animated: false });
+            }}
+            onScrollEndDrag={(e) => {
+              const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+              stickToBottomRef.current =
+                contentSize.height - (contentOffset.y + layoutMeasurement.height) < 96;
+            }}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
