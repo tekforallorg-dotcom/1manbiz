@@ -361,6 +361,29 @@ export async function maybeAutoReply(args: {
       } else if (oa.kind === "decline") {
         bodyText = composeOrderDeclined();
         actionDecision = { kind: "order_proposal", finalOrderId: current.orderId, itemCount: current.lines.length, proposal: { action: "decline_order", order_id: current.orderId, subtotal_kobo: current.subtotalKobo } };
+      } else if (oa.kind === "replace_item") {
+        const fromItem = oa.items[0];
+        const toItem = oa.items[1];
+        if (!fromItem || !toItem) {
+          bodyText = "What would you like to change, and to what?";
+        } else {
+          const added = await addItem(admin, businessId, current.orderId, toItem);
+          if (!added.ok) {
+            if (added.code === "unresolved") {
+              bodyText = "I could not find " + added.names.join(", ") + " in our list. Could you pick the exact item from what we have?";
+            } else if (added.code === "out_of_stock") {
+              bodyText = added.names.join(", ") + " is out of stock right now, so I could not make that change. Would you like something else from our list?";
+            } else {
+              console.warn("[ai/auto-reply] replace add failed", added);
+              bodyText = "I could not make that change. Please try again shortly.";
+            }
+          } else {
+            const removed = await removeItem(admin, businessId, current.orderId, fromItem.name);
+            const snap = removed.ok ? removed.order : added.order;
+            bodyText = composeOrderSummary(snap);
+            actionDecision = { kind: "order_proposal", finalOrderId: snap.orderId, itemCount: snap.lines.length, proposal: { action: "replace_item", order_id: snap.orderId, subtotal_kobo: snap.subtotalKobo, lines: snap.lines } };
+          }
+        }
       } else {
         const item = oa.items[0];
         if (!item) {

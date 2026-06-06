@@ -1,15 +1,14 @@
 import { useCallback, useState } from "react";
-import { View, Text, ScrollView, Pressable, RefreshControl, Linking } from "react-native";
+import { View, Text, ScrollView, Pressable, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
-import { ExternalLink } from "lucide-react-native";
+import { useFocusEffect, router } from "expo-router";
+import { ChevronRight } from "lucide-react-native";
 import { colors as designColors } from "@1manbiz/design";
 
 import { useSession } from "../../../lib/session";
 import { getActiveBusinessId } from "../../../lib/business";
 import { supabase } from "../../../lib/supabase";
 import { formatNaira, formatDateTime } from "../../../lib/format";
-import { API_BASE_URL } from "../../../lib/config";
 
 type ReceiptRow = {
   id: string;
@@ -64,12 +63,6 @@ export default function ReceiptsScreen() {
     finally { setRefreshing(false); }
   }, [load]);
 
-  const openReceipt = (code: string) => {
-    Linking.openURL(API_BASE_URL + "/r/" + code).catch((err) =>
-      console.error("[receipts] open error:", err),
-    );
-  };
-
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["top"]}>
       <View className="px-6 pt-4 pb-3">
@@ -93,7 +86,7 @@ export default function ReceiptsScreen() {
             {rows?.map((r) => (
               <Pressable
                 key={r.id}
-                onPress={() => openReceipt(r.receipt_code)}
+                onPress={() => router.push(`/receipts/${r.id}`)}
                 className="bg-white border border-gray-200 rounded-2xl p-4 flex-row items-center active:opacity-60"
               >
                 <View className="flex-1 mr-3">
@@ -101,7 +94,7 @@ export default function ReceiptsScreen() {
                   <Text className="text-textMuted text-xs mt-0.5">{r.paid_at ? formatDateTime(r.paid_at) : "Paid"}</Text>
                 </View>
                 <Text className="text-text text-base font-bold mr-2">{formatNaira(r.subtotal_kobo)}</Text>
-                <ExternalLink size={18} color={designColors.text} />
+                <ChevronRight size={18} color={designColors.text} />
               </Pressable>
             ))}
           </View>

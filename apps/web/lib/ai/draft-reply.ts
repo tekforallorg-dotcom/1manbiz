@@ -51,7 +51,7 @@ export interface OrderActionItem {
 }
 
 export interface OrderAction {
-  kind: "create" | "add_item" | "remove_item" | "set_quantity" | "cancel" | "confirm" | "decline";
+  kind: "create" | "add_item" | "remove_item" | "set_quantity" | "replace_item" | "cancel" | "confirm" | "decline";
   items: OrderActionItem[];
 }
 
@@ -160,6 +160,7 @@ export async function draftReply(args: {
     ? "- order intent, set the order object and reply (the customer is buying products):\n" +
       "    If there is NO current order and the customer names item(s) from CATALOG: action 'create', items = each product with its quantity, using the CATALOG name EXACTLY. Reply confirming the items and the total and that the shop owner will send the payment link.\n" +
       "    If there IS a current order: to add an item action 'add_item' with items [{name, qty}]; to change a quantity action 'set_quantity' with items [{name, qty}] as the new total quantity; to remove an item action 'remove_item' with items [{name}]. Reply with the updated order summary.\n" +
+      "    To swap one item for another (change X to Y, swap X for Y, replace X with Y, make it Y instead): action 'replace_item' with EXACTLY two items [{name: the item to remove, qty: 0}, {name: the item to add, qty}] using CATALOG names; the first is removed and the second is added. Do NOT use set_quantity for a swap.\n" +
       "    If the customer confirms the order or says that is all (confirm, that is all, done, looks good, go ahead): action 'confirm'.\n" +
       "    If the customer declines or defers instead of confirming (no; no thanks; not now; maybe later; another time; I will get back to you): action 'decline'. A bare 'no' here means decline, never confirm. Do NOT re-show the order summary and do NOT ask again; a short acknowledgement will be sent.\n" +
       "    To cancel the order: action 'cancel'.\n" +
@@ -184,7 +185,7 @@ export async function draftReply(args: {
     ? '"booking":{"action":"none|create|edit|cancel|confirm|decline","starts_at":"YYYY-MM-DDTHH:MM","title":"<short label>"},'
     : "";
   const orderField = offersOrders
-    ? '"order":{"action":"none|create|add_item|remove_item|set_quantity|cancel|confirm|decline","items":[{"name":"<exact catalog product name>","qty":<integer>}]},'
+    ? '"order":{"action":"none|create|add_item|remove_item|set_quantity|replace_item|cancel|confirm|decline","items":[{"name":"<exact catalog product name>","qty":<integer>}]},'
     : "";
   const intentOptions =
     "product|delivery|policy|order|" + (offersBookings ? "booking|" : "") + "greeting|other";
@@ -355,6 +356,9 @@ export async function draftReply(args: {
         orderAction = { kind: "remove_item", items: [first] };
       } else if (action === "set_quantity" && first) {
         orderAction = { kind: "set_quantity", items: [first] };
+      } else if (action === "replace_item" && items.length >= 2) {
+        const toItem = items[1];
+        if (first && toItem) orderAction = { kind: "replace_item", items: [first, toItem] };
       }
     }
   }
