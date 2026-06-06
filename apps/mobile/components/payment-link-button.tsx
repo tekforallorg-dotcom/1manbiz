@@ -5,7 +5,6 @@ import { MessageCircle, ArrowRight, Share2 } from "lucide-react-native";
 import { colors as designColors } from "@1manbiz/design";
 
 import { supabase } from "../lib/supabase";
-import { formatNaira } from "../lib/format";
 import { initPaymentLink } from "../lib/payments";
 import { sendReply } from "../lib/messages";
 
@@ -40,7 +39,10 @@ export function PaymentLinkButton({ orderId, customerName, customerPhone, subtot
 
   const buildMessage = (url: string) => {
     const who = customerName ? "Hi " + customerName + ", " : "Hi, ";
-    return who + "here is your secure payment link for " + formatNaira(subtotalKobo) + ": " + url;
+    // Spell the currency in sent copy: the Naira glyph renders as a strikethrough
+    // in some fonts (incl. ours), and we do not control WhatsApp's font.
+    const amount = "NGN " + Math.round(subtotalKobo / 100).toLocaleString("en-NG");
+    return who + "here is your secure payment link for " + amount + ": " + url;
   };
 
   // Create the link once, then try to auto-send into the customer's live
