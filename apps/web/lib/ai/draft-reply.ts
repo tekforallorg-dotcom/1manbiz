@@ -232,12 +232,12 @@ export async function draftReply(args: {
   const currentBookingBlock = offersBookings
     ? (currentBooking
         ? "CURRENT BOOKING: " + currentBooking.title + " on " + currentBooking.whenLabel + " (pending confirmation). Change or cancel THIS one; do not create another.\n\n"
-        : "CURRENT BOOKING: none.\n\n")
+        : "CURRENT BOOKING: none (no open booking). If an earlier message mentioned a booking, it is now closed and is NOT open. Do not say the customer already has a booking. Treat a new booking request as a brand-new booking (action 'create'). You may still answer a direct question about a past booking if the customer explicitly asks about it.\n\n")
     : "";
   const currentOrderBlock = offersOrders
     ? (currentOrder
         ? "CURRENT ORDER: " + currentOrder.label + " (pending). Add to, change, or cancel THIS order; do not start a second one.\n\n"
-        : "CURRENT ORDER: none.\n\n")
+        : "CURRENT ORDER: none (no open cart). If an earlier message in this chat mentioned an order (even one described as confirmed), it has since been paid or cancelled and is now closed; it is NOT an open cart. Do not say the customer already has an order, and do not offer to add to or cancel it. Treat any order request as a brand-new order (action 'create'). You may still answer a direct question about a past order if the customer explicitly asks about it.\n\n")
     : "";
 
   const user =
