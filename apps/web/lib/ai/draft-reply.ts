@@ -40,7 +40,7 @@ export interface ReplyLine {
 }
 
 export interface BookingAction {
-  kind: "create" | "edit" | "cancel" | "confirm";
+  kind: "create" | "edit" | "cancel" | "confirm" | "decline";
   starts_at?: string; // "YYYY-MM-DDTHH:MM" in WAT (UTC+1); create requires it, edit may use it
   title?: string;     // create/edit label
 }
@@ -51,7 +51,7 @@ export interface OrderActionItem {
 }
 
 export interface OrderAction {
-  kind: "create" | "add_item" | "remove_item" | "set_quantity" | "cancel" | "confirm";
+  kind: "create" | "add_item" | "remove_item" | "set_quantity" | "cancel" | "confirm" | "decline";
   items: OrderActionItem[];
 }
 
@@ -161,6 +161,7 @@ export async function draftReply(args: {
       "    If there is NO current order and the customer names item(s) from CATALOG: action 'create', items = each product with its quantity, using the CATALOG name EXACTLY. Reply confirming the items and the total and that the shop owner will send the payment link.\n" +
       "    If there IS a current order: to add an item action 'add_item' with items [{name, qty}]; to change a quantity action 'set_quantity' with items [{name, qty}] as the new total quantity; to remove an item action 'remove_item' with items [{name}]. Reply with the updated order summary.\n" +
       "    If the customer confirms the order or says that is all (confirm, that is all, done, looks good, go ahead): action 'confirm'.\n" +
+      "    If the customer declines or defers instead of confirming (no; no thanks; not now; maybe later; another time; I will get back to you): action 'decline'. A bare 'no' here means decline, never confirm. Do NOT re-show the order summary and do NOT ask again; a short acknowledgement will be sent.\n" +
       "    To cancel the order: action 'cancel'.\n" +
       "    If a current order exists and the customer asks to start a separate new order: action 'none'; say you will add to their current order or can cancel it first, and ask which.\n" +
       "    If the item the customer names matches more than one product in CATALOG (a brand or product family named with no specific model): action 'none'; do not choose for them. List the matching products with their prices and ask which one they want. Only act once they name a specific product.\n" +
@@ -174,15 +175,16 @@ export async function draftReply(args: {
       "    If there is NO current booking and the customer gave a specific day AND time: action 'create', starts_at = that moment as YYYY-MM-DDTHH:MM in 24h WAT resolved against CURRENT TIME below, title = the service named or 'Appointment' (short, no invented descriptions). Reply that you noted it and will confirm.\n" +
       "    If there IS a current booking and the customer wants to move it (a new day or time) or rename it: action 'edit', starts_at = the new moment if the time changed, title = the new label if renamed. Do NOT create a second booking. Reply that you updated it.\n" +
       "    If there IS a current booking and the customer confirms it (confirm, yes that is right, that works, go ahead): action 'confirm'.\n" +
+      "    If the customer declines or defers instead of confirming (no; no thanks; not now; maybe later; another time; I will get back to you): action 'decline'. A bare 'no' here means decline, never confirm. Do NOT re-show the booking summary and do NOT ask again; a short acknowledgement will be sent.\n" +
       "    If the customer wants to cancel the current booking: action 'cancel'. Reply that you cancelled it.\n" +
       "    If the day or time is vague (no specific time): action 'none' and ask for a specific day and time. Never invent a time the customer did not give.\n"
     : "";
 
   const bookingField = offersBookings
-    ? '"booking":{"action":"none|create|edit|cancel|confirm","starts_at":"YYYY-MM-DDTHH:MM","title":"<short label>"},'
+    ? '"booking":{"action":"none|create|edit|cancel|confirm|decline","starts_at":"YYYY-MM-DDTHH:MM","title":"<short label>"},'
     : "";
   const orderField = offersOrders
-    ? '"order":{"action":"none|create|add_item|remove_item|set_quantity|cancel|confirm","items":[{"name":"<exact catalog product name>","qty":<integer>}]},'
+    ? '"order":{"action":"none|create|add_item|remove_item|set_quantity|cancel|confirm|decline","items":[{"name":"<exact catalog product name>","qty":<integer>}]},'
     : "";
   const intentOptions =
     "product|delivery|policy|order|" + (offersBookings ? "booking|" : "") + "greeting|other";
@@ -310,6 +312,8 @@ export async function draftReply(args: {
         bookingAction = { kind: "cancel" };
       } else if (kind === "confirm") {
         bookingAction = { kind: "confirm" };
+      } else if (kind === "decline") {
+        bookingAction = { kind: "decline" };
       } else if (kind === "create") {
         if (startsAt) bookingAction = { kind: "create", starts_at: startsAt, title: title || "Appointment" };
       } else if (kind === "edit") {
@@ -341,6 +345,8 @@ export async function draftReply(args: {
         orderAction = { kind: "cancel", items: [] };
       } else if (action === "confirm") {
         orderAction = { kind: "confirm", items: [] };
+      } else if (action === "decline") {
+        orderAction = { kind: "decline", items: [] };
       } else if (action === "create" && items.length > 0) {
         orderAction = { kind: "create", items };
       } else if (action === "add_item" && first) {

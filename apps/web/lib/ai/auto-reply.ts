@@ -72,6 +72,9 @@ function composeBookingUpdateSummary(title: string, iso: string): string {
 function composeBookingConfirmed(title: string, iso: string): string {
   return "Your booking is confirmed: " + title + " on " + whenLabelAt(iso) + " (WAT). We look forward to seeing you.";
 }
+function composeBookingDeclined(iso: string): string {
+  return "Okay, no problem. Your booking for " + whenLabelAt(iso) + " (WAT) is saved, so just let us know whenever you are ready to confirm. Is there anything else I can help you with?";
+}
 function composeBookingCancel(title: string): string {
   return 'Done. I have cancelled "' + title + '". Let us know if you would like to rebook.';
 }
@@ -91,6 +94,9 @@ function composeOrderSummary(snap: OrderSnapshot): string {
 function composeOrderConfirmed(snap: OrderSnapshot): string {
   return "Your order is confirmed:\n" + orderLines(snap) + "\nTotal: " + formatNairaFromKobo(snap.subtotalKobo) +
     "\nWe will send you a payment link shortly.";
+}
+function composeOrderDeclined(): string {
+  return "Okay, no problem. Your order is saved, so just let us know whenever you are ready to confirm. Is there anything else I can help you with?";
 }
 
 export async function maybeAutoReply(args: {
@@ -308,6 +314,14 @@ export async function maybeAutoReply(args: {
         bodyText = composeBookingConfirmed(current.title, current.starts_at);
         actionDecision = { kind: "booking", proposal: { action: "confirm_booking", booking_id: current.id } };
       }
+    } else if (a.kind === "decline") {
+      const current = await loadCurrentBooking(admin, businessId, customerId);
+      if (!current) {
+        bodyText = "No problem. Is there anything else I can help you with?";
+      } else {
+        bodyText = composeBookingDeclined(current.starts_at);
+        actionDecision = { kind: "booking", proposal: { action: "decline_booking", booking_id: current.id } };
+      }
     }
   } else if (offersOrders && result.orderAction && customerId) {
     const oa = result.orderAction;
@@ -344,6 +358,9 @@ export async function maybeAutoReply(args: {
       } else if (oa.kind === "confirm") {
         bodyText = composeOrderConfirmed(current);
         actionDecision = { kind: "order_proposal", finalOrderId: current.orderId, itemCount: current.lines.length, proposal: { action: "confirm_order", order_id: current.orderId, subtotal_kobo: current.subtotalKobo } };
+      } else if (oa.kind === "decline") {
+        bodyText = composeOrderDeclined();
+        actionDecision = { kind: "order_proposal", finalOrderId: current.orderId, itemCount: current.lines.length, proposal: { action: "decline_order", order_id: current.orderId, subtotal_kobo: current.subtotalKobo } };
       } else {
         const item = oa.items[0];
         if (!item) {
