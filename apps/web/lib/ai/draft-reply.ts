@@ -1,18 +1,17 @@
 /**
  * AI customer-reply drafting.
  *
- * Grounds replies in three sources: product CATALOG, DELIVERY zones, and
- * business KNOWLEDGE (policies / FAQ). Two-step prompt for Haiku 4.5: the model
- * first DECIDES (intent + which single data block answers the latest message +
- * whether that block was already sent), then writes the reply from only that
- * block. Returns { reply, confidence }; unclear confidence defaults to "low"
- * so the autonomous gate suppresses.
+ * Two-step prompt for Haiku 4.5: the model first DECIDES (intent + which single
+ * data block answers the latest message + already_sent), then writes the reply
+ * from only that block. Grounds replies in product CATALOG, DELIVERY zones, and
+ * business KNOWLEDGE. Returns { reply, confidence }; unclear confidence defaults
+ * to "low" so the autonomous gate suppresses.
  *
- * Bookings are capability-gated: the booking intent, the CURRENT TIME anchor,
- * and the booking proposal appear in the prompt ONLY when the caller passes
- * offersBookings = true (service or hybrid businesses). offersBookings is
- * optional and defaults to false, so product-only businesses (and any caller
- * that omits it) never see booking machinery and the AI never tries to schedule.
+ * Bookings are capability-gated (offersBookings, default false). When enabled,
+ * the prompt gains a booking intent and a booking ACTION (create | edit |
+ * cancel) plus a CURRENT BOOKING context line so the model edits the existing
+ * appointment instead of creating a duplicate. The server executes the action
+ * and composes the authoritative confirmation; the model never charges money.
  */
 
 export const REPLY_MODEL = "claude-haiku-4-5-20251001";
@@ -39,13 +38,14 @@ export interface ReplyLine {
   body_text: string;
 }
 
-export interface BookingProposal {
-  starts_at: string; // "YYYY-MM-DDTHH:MM" in WAT (UTC+1), as resolved by the model
-  title: string;
+export interface BookingAction {
+  kind: "create" | "edit" | "cancel";
+  starts_at?: string; // "YYYY-MM-DDTHH:MM" in WAT (UTC+1); create requires it, edit may use it
+  title?: string;     // create/edit label
 }
 
 export type DraftReplyResult =
-  | { ok: true; reply: string; confidence: "high" | "low"; booking?: BookingProposal }
+  | { ok: true; reply: string; confidence: "high" | "low"; bookingAction?: BookingAction }
   | { ok: false; error: string };
 
 function extractText(data: unknown): string {
@@ -83,11 +83,13 @@ export async function draftReply(args: {
   tone: string;
   language: string;
   offersBookings?: boolean;
+  currentBooking?: { title: string; whenLabel: string } | null;
 }): Promise<DraftReplyResult> {
   const { apiKey, messages, catalog, tone, language } = args;
   const deliveryZones = args.deliveryZones ?? [];
   const knowledgeItems = args.knowledgeItems ?? [];
   const offersBookings = args.offersBookings ?? false;
+  const currentBooking = args.currentBooking ?? null;
 
   const lines: string[] = [];
   let latest = "";
@@ -131,15 +133,19 @@ export async function draftReply(args: {
     : "product, delivery, policy, order, greeting, other";
 
   const bookingSourceLine = offersBookings
-    ? "    booking -> none (the customer wants to schedule an appointment or secure a slot at a specific day and time: book me for, can I come Friday 2pm, schedule me for tomorrow)\n"
+    ? "    booking -> none (schedule, change, or cancel an appointment: book me for, can I come Friday 2pm, change my booking, cancel my appointment)\n"
     : "";
 
   const bookingRule = offersBookings
-    ? "- booking intent: if the customer named a specific day AND time, set booking.wants true, booking.starts_at to that moment as YYYY-MM-DDTHH:MM in 24h WAT resolved against CURRENT TIME below, and booking.title to a short label (the service, else 'Appointment'); write the reply as a brief line that you have noted it and the shop will confirm. If the day or time is vague, set booking.wants false and ask for a specific day and time. Never invent a time the customer did not give.\n"
+    ? "- booking intent, set the booking object:\n" +
+      "    If there is NO current booking and the customer gave a specific day AND time: action 'create', starts_at = that moment as YYYY-MM-DDTHH:MM in 24h WAT resolved against CURRENT TIME below, title = the service named or 'Appointment' (short, no invented descriptions). Reply that you noted it and will confirm.\n" +
+      "    If there IS a current booking and the customer wants to move it (a new day or time) or rename it: action 'edit', starts_at = the new moment if the time changed, title = the new label if renamed. Do NOT create a second booking. Reply that you updated it.\n" +
+      "    If the customer wants to cancel the current booking: action 'cancel'. Reply that you cancelled it.\n" +
+      "    If the day or time is vague (no specific time): action 'none' and ask for a specific day and time. Never invent a time the customer did not give.\n"
     : "";
 
   const jsonSchema = offersBookings
-    ? '{"intent":"product|delivery|policy|order|booking|greeting|other","source":"catalog|delivery|knowledge|none","already_sent":true|false,"booking":{"wants":true|false,"starts_at":"YYYY-MM-DDTHH:MM","title":"<short label>"},"reply":"<message to send>","confidence":"high|low"}'
+    ? '{"intent":"product|delivery|policy|order|booking|greeting|other","source":"catalog|delivery|knowledge|none","already_sent":true|false,"booking":{"action":"none|create|edit|cancel","starts_at":"YYYY-MM-DDTHH:MM","title":"<short label>"},"reply":"<message to send>","confidence":"high|low"}'
     : '{"intent":"product|delivery|policy|order|greeting|other","source":"catalog|delivery|knowledge|none","already_sent":true|false,"reply":"<message to send>","confidence":"high|low"}';
 
   const system =
@@ -165,7 +171,7 @@ export async function draftReply(args: {
     "- order intent: confirm item, quantity, and line total from CATALOG, and ask for delivery area or name if missing. Do NOT say the order is placed; the shop owner sends the payment link.\n" +
     bookingRule +
     "- If source is 'none' because it is a complaint, haggling, a payment claim, or a custom request, or KNOWLEDGE does not cover a policy question: reply 'Let me check with the shop and get back to you shortly' and set confidence 'low'.\n\n" +
-    "confidence: send-readiness of this reply. Set 'high' for any reply that is safe to send now: a grounded answer from the named block, a greeting, an order confirmation, a captured booking, or a booking clarifying question asking for the missing day or time. Set 'low' ONLY when the reply is the 'let me check with the shop' holding reply (complaint, haggling, payment claim, or a policy KNOWLEDGE does not cover); those wait for the vendor.\n" +
+    "confidence: send-readiness of this reply. Set 'high' for any reply that is safe to send now: a grounded answer from the named block, a greeting, an order confirmation, or any booking create/edit/cancel or a booking clarifying question. Set 'low' ONLY when the reply is the 'let me check with the shop' holding reply (complaint, haggling, payment claim, or a policy KNOWLEDGE does not cover); those wait for the vendor.\n" +
     "Tone: warm, brief, human, like a real shop attendant on WhatsApp. No 'Thank you for your inquiry'. No emojis unless the customer used one. " +
     "Language: '" + language + "'. Style: '" + tone + "'.\n\n" +
     "Respond with ONLY this JSON, no markdown fences, no prose:\n" +
@@ -177,9 +183,15 @@ export async function draftReply(args: {
     hour: "2-digit", minute: "2-digit", hour12: false,
   }).format(new Date());
   const nowBlock = offersBookings ? "CURRENT TIME (WAT, UTC+1): " + nowLabel + "\n\n" : "";
+  const currentBookingBlock = offersBookings
+    ? (currentBooking
+        ? "CURRENT BOOKING: " + currentBooking.title + " on " + currentBooking.whenLabel + " (pending confirmation). Change or cancel THIS one; do not create another.\n\n"
+        : "CURRENT BOOKING: none.\n\n")
+    : "";
 
   const user =
     nowBlock +
+    currentBookingBlock +
     "CATALOG (name | price | availability):\n" +
     catalogBlock +
     "\n\nDELIVERY (area: fee (note)):\n" +
@@ -236,33 +248,33 @@ export async function draftReply(args: {
 
   const confidence: "high" | "low" = obj.confidence === "high" ? "high" : "low";
 
-  // Parse an optional booking proposal (only when this business offers
-  // bookings). Surfaced only when the model flags wants=true and gives a
-  // concrete start; otherwise undefined so the caller takes the reply-only path.
-  let booking: BookingProposal | undefined;
+  // Parse an optional booking action (only when this business offers bookings).
+  let bookingAction: BookingAction | undefined;
   if (offersBookings) {
     const bp = obj.booking;
     if (typeof bp === "object" && bp !== null) {
       const bo = bp as Record<string, unknown>;
-      const wants = bo.wants === true;
+      const kind = bo.action;
       const startsAt = typeof bo.starts_at === "string" ? bo.starts_at.trim() : "";
       const title = typeof bo.title === "string" ? bo.title.trim() : "";
-      if (wants && startsAt) {
-        booking = { starts_at: startsAt, title: title || "Appointment" };
+      if (kind === "cancel") {
+        bookingAction = { kind: "cancel" };
+      } else if (kind === "create") {
+        if (startsAt) bookingAction = { kind: "create", starts_at: startsAt, title: title || "Appointment" };
+      } else if (kind === "edit") {
+        if (startsAt || title) bookingAction = { kind: "edit", starts_at: startsAt || undefined, title: title || undefined };
       }
     }
   }
 
-  // Log the routing decision so we can see WHY BizBot answered as it did
-  // (visible in Vercel runtime logs). Observability only, no behaviour change.
   console.log("[ai/draft-reply] decision", {
     intent: typeof obj.intent === "string" ? obj.intent : "?",
     source: typeof obj.source === "string" ? obj.source : "?",
     already_sent: obj.already_sent === true,
     offers_bookings: offersBookings,
-    booking_wants: booking !== undefined,
+    booking_action: bookingAction?.kind ?? "none",
     confidence,
   });
 
-  return { ok: true, reply, confidence, booking };
+  return { ok: true, reply, confidence, bookingAction };
 }

@@ -11,34 +11,45 @@ import {
 } from "@/lib/ai/draft-reply";
 import { shouldAutoSend, type AiMode } from "@/lib/ai/gate";
 import { broadcastTyping } from "@/lib/realtime/typing";
-import { createPendingBooking } from "@/lib/ai/actions/create-booking";
+import {
+  createPendingBooking,
+  loadCurrentBooking,
+  editBooking,
+  cancelBooking,
+} from "@/lib/ai/actions/booking-actions";
 
 /**
- * Autonomous reply loop (AI-native brick 3). Called from the WhatsApp webhook
- * after a FRESH inbound customer message is persisted. Never throws -- any
- * failure is logged and swallowed so the webhook always returns 200 to Meta.
+ * Autonomous reply loop. Called from the WhatsApp webhook after a FRESH inbound
+ * customer message is persisted. Never throws -- any failure is logged and
+ * swallowed so the webhook always returns 200 to Meta.
  *
  * Guardrails:
  *  - Only acts when ai_mode = 'autonomous' (off/assisted/semi never auto-send).
- *  - Only sends when the reply is high-confidence; low-confidence degrades to
- *    "leave for the vendor" (logged, not sent).
- *  - May create a PENDING booking ONLY when the business offers bookings
- *    (business_type service or hybrid) AND the customer confirmed a concrete
- *    time; the owner still confirms it. It NEVER creates orders, marks paid, or
- *    sends payment links. Money actions stay human.
- *  - The reply is stored as sender_role 'ai' (visually distinct; also excluded
- *    from future parse/draft input, so the AI never feeds on its own output).
- *  - Idempotency is the caller's responsibility: the webhook only invokes this
- *    on a fresh message insert, so webhook retries do not double-reply.
+ *  - Only sends high-confidence replies; low-confidence is left for the vendor.
+ *  - Bookings: when the business offers them (service/hybrid), the model emits
+ *    create/edit/cancel and the server executes it against the customer's next
+ *    upcoming booking, then composes the confirmation from the stored row.
+ *    It NEVER creates orders, marks paid, or sends payment links. Money is human.
+ *  - The reply is stored as sender_role 'ai' (excluded from future AI input).
+ *  - Idempotency is the caller's responsibility (webhook only invokes on a
+ *    fresh message insert), so retries do not double-reply.
  */
 
-function composeBookingConfirmation(title: string, startsAtIso: string): string {
-  const when = new Intl.DateTimeFormat("en-NG", {
+function whenLabel(iso: string): string {
+  return new Intl.DateTimeFormat("en-NG", {
     timeZone: "Africa/Lagos",
     weekday: "short", day: "numeric", month: "short",
     hour: "2-digit", minute: "2-digit", hour12: false,
-  }).format(new Date(startsAtIso));
-  return 'Noted. I have pencilled in "' + title + '" for ' + when + ' (WAT). We will confirm shortly.';
+  }).format(new Date(iso));
+}
+function composeBookingConfirmation(title: string, iso: string): string {
+  return 'Noted. I have pencilled in "' + title + '" for ' + whenLabel(iso) + ' (WAT). We will confirm shortly.';
+}
+function composeBookingUpdate(title: string, iso: string): string {
+  return 'Updated. "' + title + '" is now set for ' + whenLabel(iso) + ' (WAT). We will confirm shortly.';
+}
+function composeBookingCancel(title: string): string {
+  return 'Done. I have cancelled "' + title + '". Let us know if you would like to rebook.';
 }
 
 export async function maybeAutoReply(args: {
@@ -76,6 +87,23 @@ export async function maybeAutoReply(args: {
     .maybeSingle();
   if (!channel || channel.status !== "connected") return;
   if (!channel.meta_phone_number_id || !channel.access_token) return;
+
+  // Booking context: the customer for this conversation and their next upcoming
+  // booking, so the model edits that one instead of creating a duplicate.
+  let customerId: string | null = null;
+  let currentBooking: { title: string; whenLabel: string } | null = null;
+  if (offersBookings) {
+    const { data: convo } = await admin
+      .from("conversations")
+      .select("customer_id")
+      .eq("id", conversationId)
+      .maybeSingle();
+    customerId = (convo?.customer_id as string | null) ?? null;
+    if (customerId) {
+      const cb = await loadCurrentBooking(admin, businessId, customerId);
+      if (cb) currentBooking = { title: cb.title, whenLabel: whenLabel(cb.starts_at) };
+    }
+  }
 
   // Grounding context (same shape as the draft-reply route).
   const { data: msgRows } = await admin
@@ -129,7 +157,9 @@ export async function maybeAutoReply(args: {
   // Real composing signal: dots appear for exactly the model's thinking time,
   // then clear the instant the draft is ready (the message follows on send).
   void broadcastTyping(conversationId, "start");
-  const result = await draftReply({ apiKey, messages, catalog, deliveryZones, knowledgeItems, tone, language, offersBookings });
+  const result = await draftReply({
+    apiKey, messages, catalog, deliveryZones, knowledgeItems, tone, language, offersBookings, currentBooking,
+  });
   void broadcastTyping(conversationId, "stop");
   if (!result.ok) {
     console.error("[ai/auto-reply] draft failed", result.error);
@@ -164,53 +194,59 @@ export async function maybeAutoReply(args: {
   };
 
   if (!act) {
-    // Low confidence: do not send. The unread customer message stays in the
-    // inbox for the vendor; we log the suppressed draft for the evidence base.
     await logDecision("pending");
     return;
   }
 
-  // AI action: create a pending booking when the model captured a concrete
-  // time AND this business offers bookings. The customer comes from the
-  // conversation; we never guess one. On success the customer gets a
-  // deterministic confirmation that matches what was stored; the owner
-  // confirms it from the bookings detail screen. On any failure we fall back
-  // to asking for a clear day and time, never a fabricated confirmation.
+  // Booking action: create / edit / cancel, executed against this customer's
+  // next upcoming booking. The reply is composed from the stored result so the
+  // customer message always matches reality. Failures fall back to a safe ask,
+  // never a fabricated confirmation.
   let bodyText = result.reply;
   let bookedDecision: { kind: string; proposal: Record<string, unknown> } | null = null;
 
-  if (result.booking && offersBookings) {
-    const { data: convo } = await admin
-      .from("conversations")
-      .select("customer_id")
-      .eq("id", conversationId)
-      .maybeSingle();
-    const customerId = (convo?.customer_id as string | null) ?? null;
-
-    if (!customerId) {
-      bodyText = "Could you confirm the exact day and time you would like to come in?";
-    } else {
+  if (offersBookings && result.bookingAction && customerId) {
+    const a = result.bookingAction;
+    if (a.kind === "create") {
       const created = await createPendingBooking({
-        admin,
-        businessId,
-        customerId,
-        title: result.booking.title,
-        startsAtWatLocal: result.booking.starts_at,
+        admin, businessId, customerId, title: a.title || "Appointment", startsAtWatLocal: a.starts_at ?? "",
       });
       if (created.ok) {
-        bodyText = composeBookingConfirmation(result.booking.title, created.startsAtIso);
-        bookedDecision = {
-          kind: "booking",
-          proposal: {
-            action: "create_booking",
-            booking_id: created.bookingId,
-            starts_at: created.startsAtIso,
-            title: result.booking.title,
-          },
-        };
+        bodyText = composeBookingConfirmation(a.title || "Appointment", created.startsAtIso);
+        bookedDecision = { kind: "booking", proposal: { action: "create_booking", booking_id: created.bookingId, starts_at: created.startsAtIso, title: a.title || "Appointment" } };
       } else {
-        console.warn("[ai/auto-reply] booking not created", created.error);
+        console.warn("[ai/auto-reply] booking create failed", created.error);
         bodyText = "Could you confirm the exact day and time you would like to come in?";
+      }
+    } else if (a.kind === "edit") {
+      const current = await loadCurrentBooking(admin, businessId, customerId);
+      if (!current) {
+        bodyText = "I do not see an upcoming booking to change. Would you like to make a new one?";
+      } else {
+        const edited = await editBooking(admin, { bookingId: current.id, startsAtWatLocal: a.starts_at, title: a.title });
+        if (edited.ok) {
+          const iso = edited.startsAtIso ?? current.starts_at;
+          const title = edited.title ?? current.title;
+          bodyText = composeBookingUpdate(title, iso);
+          bookedDecision = { kind: "booking", proposal: { action: "edit_booking", booking_id: current.id, starts_at: iso, title } };
+        } else {
+          console.warn("[ai/auto-reply] booking edit failed", edited.error);
+          bodyText = "I could not update that booking. Could you confirm the new day and time?";
+        }
+      }
+    } else if (a.kind === "cancel") {
+      const current = await loadCurrentBooking(admin, businessId, customerId);
+      if (!current) {
+        bodyText = "I do not see an upcoming booking to cancel.";
+      } else {
+        const cancelled = await cancelBooking(admin, current.id);
+        if (cancelled.ok) {
+          bodyText = composeBookingCancel(current.title);
+          bookedDecision = { kind: "booking", proposal: { action: "cancel_booking", booking_id: current.id } };
+        } else {
+          console.warn("[ai/auto-reply] booking cancel failed", cancelled.error);
+          bodyText = "I could not cancel that booking. Please try again shortly.";
+        }
       }
     }
   }
