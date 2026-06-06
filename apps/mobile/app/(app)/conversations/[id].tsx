@@ -34,6 +34,7 @@ import { sendReply } from "../../../lib/messages";
 import { fetchCustomerStats, type CustomerStats } from "../../../lib/customer-stats";
 import { supabase } from "../../../lib/supabase";
 import { MessageBubble } from "../../../components/message-bubble";
+import { TypingIndicator } from "../../../components/typing-indicator";
 
 type DraftLine = {
   uid: string;
@@ -85,8 +86,12 @@ export default function ConversationThreadScreen() {
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [creating, setCreating] = useState(false);
   const [customerStats, setCustomerStats] = useState<CustomerStats | null>(null);
+  const [aiMode, setAiMode] = useState<string | null>(null);
+  const [botTyping, setBotTyping] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
+  const aiModeRef = useRef<string | null>(null);
+  const botTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const insets = useSafeAreaInsets();
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -100,6 +105,13 @@ export default function ConversationThreadScreen() {
         const bizId = await getActiveBusinessId(user.id);
         if (!bizId || !id) { setError("No business"); return; }
         if (!cancelled) setBusinessId(bizId);
+
+        const { data: bizRow } = await supabase
+          .from("businesses")
+          .select("ai_mode")
+          .eq("id", bizId)
+          .maybeSingle();
+        if (!cancelled) setAiMode((bizRow?.ai_mode as string | null) ?? null);
 
         const h = await fetchConversationHeader(id, bizId);
         if (cancelled) return;
@@ -146,6 +158,15 @@ export default function ConversationThreadScreen() {
     })();
     return () => { cancelled = true; };
   }, [header?.customer_id]);
+
+  // Mirror ai_mode into a ref so the realtime handler (subscribed once) reads
+  // the current value without resubscribing when ai_mode loads.
+  useEffect(() => { aiModeRef.current = aiMode; }, [aiMode]);
+
+  // Keep the typing bubble pinned to the bottom when it appears.
+  useEffect(() => {
+    if (botTyping) setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+  }, [botTyping]);
 
   // Scroll to bottom when message list changes.
   useEffect(() => {
@@ -202,6 +223,18 @@ export default function ConversationThreadScreen() {
           (payload) => {
             const row = mapRow(payload.new as Record<string, unknown>);
             setMessages((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]));
+            // WhatsApp-style typing: in autonomous mode BizBot replies to an
+            // inbound, so show the dots until its outbound lands or we time out.
+            if (botTypingTimeoutRef.current) {
+              clearTimeout(botTypingTimeoutRef.current);
+              botTypingTimeoutRef.current = null;
+            }
+            if (row.direction === "in" && aiModeRef.current === "autonomous") {
+              setBotTyping(true);
+              botTypingTimeoutRef.current = setTimeout(() => setBotTyping(false), 12000);
+            } else if (row.direction === "out") {
+              setBotTyping(false);
+            }
           })
         .on("postgres_changes",
           { event: "UPDATE", schema: "public", table: "messages", filter: `conversation_id=eq.${id}` },
@@ -214,6 +247,10 @@ export default function ConversationThreadScreen() {
     return () => {
       cancelled = true;
       if (channel) void supabase.removeChannel(channel);
+      if (botTypingTimeoutRef.current) {
+        clearTimeout(botTypingTimeoutRef.current);
+        botTypingTimeoutRef.current = null;
+      }
     };
   }, [id]);
 
@@ -428,6 +465,7 @@ export default function ConversationThreadScreen() {
             ) : (
               messages.map((m) => <MessageBubble key={m.id} message={m} />)
             )}
+            {botTyping ? <TypingIndicator /> : null}
           </ScrollView>
         )}
 
