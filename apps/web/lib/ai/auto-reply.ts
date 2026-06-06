@@ -11,6 +11,7 @@ import {
 } from "@/lib/ai/draft-reply";
 import { shouldAutoSend, type AiMode } from "@/lib/ai/gate";
 import { broadcastTyping } from "@/lib/realtime/typing";
+import { createPendingBooking } from "@/lib/ai/actions/create-booking";
 
 /**
  * Autonomous reply loop (AI-native brick 3). Called from the WhatsApp webhook
@@ -21,13 +22,24 @@ import { broadcastTyping } from "@/lib/realtime/typing";
  *  - Only acts when ai_mode = 'autonomous' (off/assisted/semi never auto-send).
  *  - Only sends when the reply is high-confidence and grounded in the catalog;
  *    low-confidence degrades to "leave for the vendor" (logged, not sent).
- *  - Answers questions only: it NEVER creates orders, marks paid, or sends
+ *  - May create a PENDING booking when the customer confirms a concrete time
+ *    (owner still confirms it). It NEVER creates orders, marks paid, or sends
  *    payment links. Money actions stay human.
  *  - The reply is stored as sender_role 'ai' (visually distinct; also excluded
  *    from future parse/draft input, so the AI never feeds on its own output).
  *  - Idempotency is the caller's responsibility: the webhook only invokes this
  *    on a fresh message insert, so webhook retries do not double-reply.
  */
+
+function composeBookingConfirmation(title: string, startsAtIso: string): string {
+  const when = new Intl.DateTimeFormat("en-NG", {
+    timeZone: "Africa/Lagos",
+    weekday: "short", day: "numeric", month: "short",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(new Date(startsAtIso));
+  return 'Noted. I have pencilled in "' + title + '" for ' + when + ' (WAT). We will confirm shortly.';
+}
+
 export async function maybeAutoReply(args: {
   businessId: string;
   conversationId: string;
@@ -123,18 +135,21 @@ export async function maybeAutoReply(args: {
   // open by construction.
   const act = shouldAutoSend({ mode, windowOpen: true, confidence: result.confidence });
 
-  const logDecision = async (outcome: "auto_sent" | "pending") => {
+  const logDecision = async (
+    outcome: "auto_sent" | "pending",
+    extra?: { kind?: string; proposal?: Record<string, unknown> },
+  ) => {
     try {
       await admin.from("ai_decisions").insert({
         business_id: businessId,
         conversation_id: conversationId,
-        kind: "reply",
+        kind: extra?.kind ?? "reply",
         mode: "autonomous",
         model: REPLY_MODEL,
         input_message_count: messages.length,
         item_count: 0,
         confidence: result.confidence,
-        proposal: { reply: result.reply, confidence: result.confidence },
+        proposal: extra?.proposal ?? { reply: result.reply, confidence: result.confidence },
         outcome,
         outcome_at: outcome === "auto_sent" ? new Date().toISOString() : null,
       });
@@ -150,26 +165,71 @@ export async function maybeAutoReply(args: {
     return;
   }
 
+  // AI action: create a pending booking when the model captured a concrete
+  // time (autonomous + high-confidence path only). The customer comes from
+  // the conversation; we never guess one. On success the customer gets a
+  // deterministic confirmation that matches what was stored; the owner
+  // confirms it from the bookings detail screen. On any failure we fall back
+  // to asking for a clear day and time, never a fabricated confirmation.
+  let bodyText = result.reply;
+  let bookedDecision: { kind: string; proposal: Record<string, unknown> } | null = null;
+
+  if (result.booking) {
+    const { data: convo } = await admin
+      .from("conversations")
+      .select("customer_id")
+      .eq("id", conversationId)
+      .maybeSingle();
+    const customerId = (convo?.customer_id as string | null) ?? null;
+
+    if (!customerId) {
+      bodyText = "Could you confirm the exact day and time you would like to come in?";
+    } else {
+      const created = await createPendingBooking({
+        admin,
+        businessId,
+        customerId,
+        title: result.booking.title,
+        startsAtWatLocal: result.booking.starts_at,
+      });
+      if (created.ok) {
+        bodyText = composeBookingConfirmation(result.booking.title, created.startsAtIso);
+        bookedDecision = {
+          kind: "booking",
+          proposal: {
+            action: "create_booking",
+            booking_id: created.bookingId,
+            starts_at: created.startsAtIso,
+            title: result.booking.title,
+          },
+        };
+      } else {
+        console.warn("[ai/auto-reply] booking not created", created.error);
+        bodyText = "Could you confirm the exact day and time you would like to come in?";
+      }
+    }
+  }
+
   const sendResult = await sendWhatsAppText({
     phoneNumberId: channel.meta_phone_number_id,
     accessToken: channel.access_token,
     toE164,
-    body: result.reply,
+    body: bodyText,
   });
   if (!sendResult.ok) {
     console.error("[ai/auto-reply] send failed", sendResult.error);
-    await logDecision("pending");
+    await logDecision("pending", bookedDecision ?? undefined);
     return;
   }
 
   const sentAt = new Date().toISOString();
-  const preview = result.reply.slice(0, 80);
+  const preview = bodyText.slice(0, 80);
 
   await admin.from("messages").insert({
     conversation_id: conversationId,
     direction: "out",
     sender_role: "ai",
-    body_text: result.reply,
+    body_text: bodyText,
     sent_at: sentAt,
     meta_message_id: sendResult.wamid,
     meta_status: "sent",
@@ -184,5 +244,5 @@ export async function maybeAutoReply(args: {
     })
     .eq("id", conversationId);
 
-  await logDecision("auto_sent");
+  await logDecision("auto_sent", bookedDecision ?? undefined);
 }
