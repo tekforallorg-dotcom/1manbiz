@@ -10,7 +10,7 @@ import {
   markOrderPaid,
   type OrderDetail,
 } from "../../../lib/order-detail";
-import { formatNaira, formatDateTime } from "../../../lib/format";
+import { formatNaira, nairaParts, formatDateTime } from "../../../lib/format";
 import { API_BASE_URL } from "../../../lib/config";
 import { ScreenHeader } from "../../../components/screen-header";
 import { ConfirmSheet } from "../../../components/confirm-sheet";
@@ -118,7 +118,10 @@ export default function OrderDetailScreen() {
         <View className="pt-2">
           <Text className="text-textMuted text-xs uppercase tracking-wider">Total</Text>
           <View className="flex-row items-center mt-1">
-            <Text className="text-text text-4xl font-bold">{formatNaira(order.subtotal_kobo)}</Text>
+            <View className="flex-row items-baseline">
+              <Text className="text-textMuted text-xl font-normal mr-1">{nairaParts(order.subtotal_kobo).symbol}</Text>
+              <Text className="text-text text-4xl font-bold">{nairaParts(order.subtotal_kobo).amount}</Text>
+            </View>
             <View className={`${status.bg} px-2.5 py-1 rounded-full ml-3`}>
               <Text className={`${status.text} text-xs font-medium`}>{status.label}</Text>
             </View>
