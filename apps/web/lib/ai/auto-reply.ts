@@ -20,11 +20,12 @@ import { createPendingBooking } from "@/lib/ai/actions/create-booking";
  *
  * Guardrails:
  *  - Only acts when ai_mode = 'autonomous' (off/assisted/semi never auto-send).
- *  - Only sends when the reply is high-confidence and grounded in the catalog;
- *    low-confidence degrades to "leave for the vendor" (logged, not sent).
- *  - May create a PENDING booking when the customer confirms a concrete time
- *    (owner still confirms it). It NEVER creates orders, marks paid, or sends
- *    payment links. Money actions stay human.
+ *  - Only sends when the reply is high-confidence; low-confidence degrades to
+ *    "leave for the vendor" (logged, not sent).
+ *  - May create a PENDING booking ONLY when the business offers bookings
+ *    (business_type service or hybrid) AND the customer confirmed a concrete
+ *    time; the owner still confirms it. It NEVER creates orders, marks paid, or
+ *    sends payment links. Money actions stay human.
  *  - The reply is stored as sender_role 'ai' (visually distinct; also excluded
  *    from future parse/draft input, so the AI never feeds on its own output).
  *  - Idempotency is the caller's responsibility: the webhook only invokes this
@@ -56,12 +57,16 @@ export async function maybeAutoReply(args: {
   // Mode gate first (cheapest check -- skip everything if not autonomous).
   const { data: business } = await admin
     .from("businesses")
-    .select("id, ai_mode, ai_tone, ai_language")
+    .select("id, ai_mode, ai_tone, ai_language, business_type")
     .eq("id", businessId)
     .maybeSingle();
   if (!business) return;
   const mode = (business.ai_mode as AiMode | null) ?? "assisted";
   if (mode !== "autonomous") return;
+
+  // Booking capability: only service/hybrid businesses can take appointments.
+  const businessType = (business.business_type as string | null) ?? "product";
+  const offersBookings = businessType === "service" || businessType === "hybrid";
 
   // Channel must be connected with usable per-tenant credentials.
   const { data: channel } = await admin
@@ -124,7 +129,7 @@ export async function maybeAutoReply(args: {
   // Real composing signal: dots appear for exactly the model's thinking time,
   // then clear the instant the draft is ready (the message follows on send).
   void broadcastTyping(conversationId, "start");
-  const result = await draftReply({ apiKey, messages, catalog, deliveryZones, knowledgeItems, tone, language });
+  const result = await draftReply({ apiKey, messages, catalog, deliveryZones, knowledgeItems, tone, language, offersBookings });
   void broadcastTyping(conversationId, "stop");
   if (!result.ok) {
     console.error("[ai/auto-reply] draft failed", result.error);
@@ -166,15 +171,15 @@ export async function maybeAutoReply(args: {
   }
 
   // AI action: create a pending booking when the model captured a concrete
-  // time (autonomous + high-confidence path only). The customer comes from
-  // the conversation; we never guess one. On success the customer gets a
+  // time AND this business offers bookings. The customer comes from the
+  // conversation; we never guess one. On success the customer gets a
   // deterministic confirmation that matches what was stored; the owner
   // confirms it from the bookings detail screen. On any failure we fall back
   // to asking for a clear day and time, never a fabricated confirmation.
   let bodyText = result.reply;
   let bookedDecision: { kind: string; proposal: Record<string, unknown> } | null = null;
 
-  if (result.booking) {
+  if (result.booking && offersBookings) {
     const { data: convo } = await admin
       .from("conversations")
       .select("customer_id")
