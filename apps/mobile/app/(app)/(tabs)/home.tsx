@@ -16,7 +16,7 @@ import { supabase } from "../../../lib/supabase";
 import { firstNameFrom } from "../../../lib/profile";
 import { getActiveBusinessId } from "../../../lib/business";
 import { fetchDashboardSummary, type DashboardSummary } from "../../../lib/dashboard";
-import { formatNaira } from "../../../lib/format";
+import { nairaParts } from "../../../lib/format";
 import { Wordmark } from "../../../components/wordmark";
 import { OrderRow } from "../../../components/order-row";
 
@@ -177,10 +177,13 @@ export default function HomeScreen() {
               <Text className="text-textMuted text-xs font-medium uppercase tracking-wider">Today's revenue</Text>
               {loading && !summary ? (
                 <View className="mt-2 h-10 w-44 rounded-lg bg-gray-100" />
+              ) : t ? (
+                <View className="flex-row items-baseline mt-1">
+                  <Text className="text-textMuted text-xl font-normal mr-1">{nairaParts(t.revenueTodayKobo).symbol}</Text>
+                  <Text className="text-text text-4xl font-bold" numberOfLines={1}>{nairaParts(t.revenueTodayKobo).amount}</Text>
+                </View>
               ) : (
-                <Text className="text-text text-4xl font-bold mt-1" numberOfLines={1}>
-                  {t ? formatNaira(t.revenueTodayKobo) : "-"}
-                </Text>
+                <Text className="text-text text-4xl font-bold mt-1">-</Text>
               )}
               <Text className="text-textSecondary text-sm mt-3 leading-5">{buildSummary(summary)}</Text>
 

@@ -7,6 +7,14 @@ export function formatNaira(kobo: number | null | undefined): string {
   return "₦ " + naira.toLocaleString("en-NG");
 }
 
+// Same value as formatNaira, split so the symbol can render at a lighter weight
+// than the amount. The bold Naira glyph shows a slash artifact in our font, so
+// large headline figures draw the symbol separately, not in bold.
+export function nairaParts(kobo: number | null | undefined): { symbol: string; amount: string } {
+  const naira = kobo == null || Number.isNaN(kobo) ? 0 : Math.round(kobo / 100);
+  return { symbol: "\u20A6", amount: naira.toLocaleString("en-NG") };
+}
+
 // Returns ISO string for the start of today in UTC.
 // TODO: timezone-correct version using Africa/Lagos (UTC+1). Until then,
 // rollover happens at 01:00 Lagos time, not midnight.
