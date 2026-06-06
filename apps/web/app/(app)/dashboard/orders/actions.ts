@@ -201,7 +201,22 @@ async function transitionOrderStatus(orderId: string, nextStatus: "paid" | "canc
 }
 
 export async function markOrderPaidAction(orderId: string): Promise<OrderTransitionResult> {
-  return transitionOrderStatus(orderId, "paid");
+  const result = await transitionOrderStatus(orderId, "paid");
+  if (result.ok) {
+    // Best-effort: auto-send the receipt to the customer. Never block the
+    // mark-paid result on the messaging side effect.
+    try {
+      const h = await headers();
+      const host = h.get("x-forwarded-host") ?? h.get("host");
+      const proto = h.get("x-forwarded-proto") ?? "https";
+      const origin = host ? proto + "://" + host : "https://1manbiz.vercel.app";
+      const admin = createAdminClient();
+      await sendReceiptForOrder(admin, { orderId, origin });
+    } catch (e) {
+      console.error("[orders] receipt auto-send after mark-paid failed", e);
+    }
+  }
+  return result;
 }
 
 export async function cancelOrderAction(orderId: string): Promise<OrderTransitionResult> {
@@ -385,6 +400,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { initPaymentForOrder } from "@/lib/payments/init";
 import { sendWhatsAppText } from "@/lib/whatsapp/send";
 import { formatNairaFromKobo } from "@/lib/format";
+import { sendReceiptForOrder } from "@/lib/receipt-send";
 
 export type SendPaymentLinkResult =
   | { ok: true; sent: boolean; url: string; reference: string }
