@@ -163,6 +163,7 @@ export async function draftReply(args: {
       "    To cancel the order: action 'cancel'.\n" +
       "    If a current order exists and the customer asks to start a separate new order: action 'none'; say you will add to their current order or can cancel it first, and ask which.\n" +
       "    If a requested product is not in CATALOG: action 'none'; ask them to choose from the list. Never invent a product or a price.\n" +
+      "    If a product is shown as out of stock in CATALOG: action 'none'; tell the customer it is out of stock and offer an in-stock item. Do not add an out-of-stock product.\n" +
       "    Never say the order is placed or paid; the shop owner sends the payment link.\n"
     : "- order intent: confirm item, quantity, and line total from CATALOG, and ask for delivery area or name if missing. Do NOT say the order is placed; the shop owner sends the payment link.\n";
 

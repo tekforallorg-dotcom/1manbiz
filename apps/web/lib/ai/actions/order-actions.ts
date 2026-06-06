@@ -41,6 +41,7 @@ interface ResolvedProduct {
   id: string;
   name: string;
   price_kobo: number;
+  stock_quantity: number;
 }
 
 const MAX_QTY = 999;
@@ -65,14 +66,19 @@ async function resolveActiveProduct(
   if (!trimmed) return null;
   const { data } = await admin
     .from("products")
-    .select("id, name, price_kobo, status")
+    .select("id, name, price_kobo, status, stock_quantity")
     .eq("business_id", businessId)
     .eq("status", "active")
     .ilike("name", trimmed)
     .limit(1);
   if (!data || data.length === 0) return null;
   const p = data[0] as Record<string, unknown>;
-  return { id: p.id as string, name: p.name as string, price_kobo: Number(p.price_kobo) };
+  return {
+    id: p.id as string,
+    name: p.name as string,
+    price_kobo: Number(p.price_kobo),
+    stock_quantity: Number(p.stock_quantity),
+  };
 }
 
 // Read-only snapshot (used for the prompt context, so no write on every inbound).
@@ -123,6 +129,7 @@ export type CreateOrderResult =
   | { ok: true; order: OrderSnapshot }
   | { ok: false; code: "order_exists"; order: OrderSnapshot }
   | { ok: false; code: "unresolved"; names: string[] }
+  | { ok: false; code: "out_of_stock"; names: string[] }
   | { ok: false; code: "empty" }
   | { ok: false; code: "error"; message: string };
 
@@ -148,12 +155,17 @@ export async function createOrder(
     line_total_kobo: number;
   }> = [];
   const unresolved: string[] = [];
+  const outOfStock: string[] = [];
   let subtotalKobo = 0;
 
   for (const it of wanted) {
     const product = await resolveActiveProduct(admin, businessId, it.name);
     if (!product) {
       unresolved.push(it.name.trim());
+      continue;
+    }
+    if (product.stock_quantity <= 0) {
+      outOfStock.push(product.name);
       continue;
     }
     const qty = cleanQty(it.qty);
@@ -169,6 +181,7 @@ export async function createOrder(
   }
 
   if (unresolved.length > 0) return { ok: false, code: "unresolved", names: unresolved };
+  if (outOfStock.length > 0) return { ok: false, code: "out_of_stock", names: outOfStock };
   if (rows.length === 0) return { ok: false, code: "empty" };
 
   const { data: orderRow, error: orderError } = await admin
@@ -201,6 +214,7 @@ export async function createOrder(
 export type EditOrderResult =
   | { ok: true; order: OrderSnapshot }
   | { ok: false; code: "unresolved"; names: string[] }
+  | { ok: false; code: "out_of_stock"; names: string[] }
   | { ok: false; code: "not_in_order"; names: string[] }
   | { ok: false; code: "error"; message: string };
 
@@ -214,6 +228,7 @@ export async function addItem(
 ): Promise<EditOrderResult> {
   const product = await resolveActiveProduct(admin, businessId, item.name);
   if (!product) return { ok: false, code: "unresolved", names: [(item.name || "").trim()] };
+  if (product.stock_quantity <= 0) return { ok: false, code: "out_of_stock", names: [product.name] };
   const addQty = cleanQty(item.qty);
 
   const { data: line } = await admin

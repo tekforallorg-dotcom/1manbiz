@@ -291,6 +291,8 @@ export async function maybeAutoReply(args: {
         bodyText = "You already have an open order: " + lineText(created.order) + " (total " + formatNairaFromKobo(created.order.subtotalKobo) + "). Would you like to add to it, or cancel it and start a new one?";
       } else if (created.code === "unresolved") {
         bodyText = "I could not find " + created.names.join(", ") + " in our list. Could you pick the exact item from what we have?";
+      } else if (created.code === "out_of_stock") {
+        bodyText = created.names.join(", ") + " is out of stock right now, so I could not add it. Would you like something else from our list?";
       } else if (created.code === "empty") {
         bodyText = "What would you like to order?";
       } else {
@@ -330,6 +332,8 @@ export async function maybeAutoReply(args: {
             }
           } else if (res.code === "unresolved") {
             bodyText = "I could not find " + res.names.join(", ") + " in our list. Could you pick the exact item from what we have?";
+          } else if (res.code === "out_of_stock") {
+            bodyText = res.names.join(", ") + " is out of stock right now, so I could not add it. Would you like something else from our list?";
           } else if (res.code === "not_in_order") {
             bodyText = res.names.join(", ") + " is not on your current order. Would you like me to add it?";
           } else {
