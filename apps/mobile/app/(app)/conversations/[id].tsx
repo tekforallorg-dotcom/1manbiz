@@ -90,7 +90,6 @@ export default function ConversationThreadScreen() {
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [creating, setCreating] = useState(false);
   const [customerStats, setCustomerStats] = useState<CustomerStats | null>(null);
-  const [aiMode, setAiMode] = useState<string | null>(null);
   const [botTyping, setBotTyping] = useState(false);
 
   // Open-orders sheet (with inline send-link) + editable customer profile sheet.
@@ -103,7 +102,6 @@ export default function ConversationThreadScreen() {
   const [savingNote, setSavingNote] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
-  const aiModeRef = useRef<string | null>(null);
   const botTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // True while the user is at or near the bottom. New content sticks to the
   // latest message; opening a chat starts true so it lands at the bottom.
@@ -121,13 +119,6 @@ export default function ConversationThreadScreen() {
         const bizId = await getActiveBusinessId(user.id);
         if (!bizId || !id) { setError("No business"); return; }
         if (!cancelled) setBusinessId(bizId);
-
-        const { data: bizRow } = await supabase
-          .from("businesses")
-          .select("ai_mode")
-          .eq("id", bizId)
-          .maybeSingle();
-        if (!cancelled) setAiMode((bizRow?.ai_mode as string | null) ?? null);
 
         const h = await fetchConversationHeader(id, bizId);
         if (cancelled) return;
@@ -175,10 +166,6 @@ export default function ConversationThreadScreen() {
     return () => { cancelled = true; };
   }, [header?.customer_id]);
 
-  // Mirror ai_mode into a ref so the realtime handler (subscribed once) reads
-  // the current value without resubscribing when ai_mode loads.
-  useEffect(() => { aiModeRef.current = aiMode; }, [aiMode]);
-
   // Keep the typing bubble pinned to the bottom when it appears.
   useEffect(() => {
     if (botTyping) setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
@@ -222,6 +209,7 @@ export default function ConversationThreadScreen() {
       meta_status: (r.meta_status as string | null) ?? null,
     });
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    let bizbotChannel: ReturnType<typeof supabase.channel> | null = null;
     let cancelled = false;
     (async () => {
       // RLS-gated postgres_changes only reach an authenticated socket. On RN the
@@ -239,17 +227,15 @@ export default function ConversationThreadScreen() {
           (payload) => {
             const row = mapRow(payload.new as Record<string, unknown>);
             setMessages((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]));
-            // WhatsApp-style typing: in autonomous mode BizBot replies to an
-            // inbound, so show the dots until its outbound lands or we time out.
-            if (botTypingTimeoutRef.current) {
-              clearTimeout(botTypingTimeoutRef.current);
-              botTypingTimeoutRef.current = null;
-            }
-            if (row.direction === "in" && aiModeRef.current === "autonomous") {
-              setBotTyping(true);
-              botTypingTimeoutRef.current = setTimeout(() => setBotTyping(false), 12000);
-            } else if (row.direction === "out") {
+            // BizBot's own outbound is a definite stop for the dots. The dots
+            // themselves are driven by the server composing signal on the
+            // bizbot broadcast channel below, not guessed from the inbound.
+            if (row.direction === "out") {
               setBotTyping(false);
+              if (botTypingTimeoutRef.current) {
+                clearTimeout(botTypingTimeoutRef.current);
+                botTypingTimeoutRef.current = null;
+              }
             }
           })
         .on("postgres_changes",
@@ -259,10 +245,32 @@ export default function ConversationThreadScreen() {
             setMessages((prev) => prev.map((m) => (m.id === row.id ? row : m)));
           })
         .subscribe();
+
+      // Real "BizBot is composing" signal: the autonomous reply path broadcasts
+      // typing start/stop on this topic. Dots show only while the model is
+      // actually composing; the timeout is a safety net if a stop is missed.
+      bizbotChannel = supabase
+        .channel(`bizbot:${id}`)
+        .on("broadcast", { event: "typing" }, (payload) => {
+          const state = (payload.payload as { state?: string } | undefined)?.state;
+          if (state === "start") {
+            setBotTyping(true);
+            if (botTypingTimeoutRef.current) clearTimeout(botTypingTimeoutRef.current);
+            botTypingTimeoutRef.current = setTimeout(() => setBotTyping(false), 15000);
+          } else if (state === "stop") {
+            setBotTyping(false);
+            if (botTypingTimeoutRef.current) {
+              clearTimeout(botTypingTimeoutRef.current);
+              botTypingTimeoutRef.current = null;
+            }
+          }
+        })
+        .subscribe();
     })();
     return () => {
       cancelled = true;
       if (channel) void supabase.removeChannel(channel);
+      if (bizbotChannel) void supabase.removeChannel(bizbotChannel);
       if (botTypingTimeoutRef.current) {
         clearTimeout(botTypingTimeoutRef.current);
         botTypingTimeoutRef.current = null;

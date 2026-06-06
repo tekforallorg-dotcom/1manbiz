@@ -10,6 +10,7 @@ import {
   type ReplyLine,
 } from "@/lib/ai/draft-reply";
 import { shouldAutoSend, type AiMode } from "@/lib/ai/gate";
+import { broadcastTyping } from "@/lib/realtime/typing";
 
 /**
  * Autonomous reply loop (AI-native brick 3). Called from the WhatsApp webhook
@@ -108,7 +109,11 @@ export async function maybeAutoReply(args: {
   const tone = (business.ai_tone as string | null) ?? "friendly";
   const language = (business.ai_language as string | null) ?? "en";
 
+  // Real composing signal: dots appear for exactly the model's thinking time,
+  // then clear the instant the draft is ready (the message follows on send).
+  void broadcastTyping(conversationId, "start");
   const result = await draftReply({ apiKey, messages, catalog, deliveryZones, knowledgeItems, tone, language });
+  void broadcastTyping(conversationId, "stop");
   if (!result.ok) {
     console.error("[ai/auto-reply] draft failed", result.error);
     return;
