@@ -1,59 +1,81 @@
-import { Pressable, Text, View } from "react-native";
-import { useRouter } from "expo-router";
-
-import { relativeTimeShort } from "../lib/format";
+import { View, Text, Pressable } from "react-native";
+import { useRouter, type Href } from "expo-router";
 import type { ConversationListItem } from "../lib/conversations";
 
-interface Props {
-  conversation: ConversationListItem;
+// Compact chat-list time: today shows HH:MM, this week the weekday, older the
+// date. Avoids Intl for Hermes safety.
+const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function chatTime(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) {
+    const h = d.getHours();
+    const m = d.getMinutes();
+    const hh = ((h + 11) % 12) + 1;
+    return hh + ":" + (m < 10 ? "0" + m : String(m)) + " " + (h < 12 ? "AM" : "PM");
+  }
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
+  if (diffDays < 7) return DOW[d.getDay()] ?? "";
+  return d.getDate() + " " + (MON[d.getMonth()] ?? "");
 }
 
-export function ConversationRow({ conversation }: Props) {
+function channelLabel(channel: string): string {
+  if (channel === "whatsapp") return "WhatsApp";
+  if (!channel) return "";
+  return channel.charAt(0).toUpperCase() + channel.slice(1);
+}
+
+type Props = { conversation: ConversationListItem };
+
+export function ConversationRow({ conversation: c }: Props) {
   const router = useRouter();
-  const display = conversation.customer_name
-    ?? conversation.contact_phone_e164
-    ?? "Customer";
-  const preview = conversation.last_message_preview ?? "";
-  const isOutbound = conversation.last_message_direction === "out";
-  const hasUnread = conversation.unread_count > 0;
+  const name = c.customer_name ?? c.contact_phone_e164 ?? "Customer";
+  const initial = (name.trim()[0] ?? "?").toUpperCase();
+  const unread = c.unread_count > 0;
+  const preview = c.last_message_preview
+    ? (c.last_message_direction === "out" ? "You: " + c.last_message_preview : c.last_message_preview)
+    : "No messages yet";
 
   return (
     <Pressable
-      onPress={() => router.push(`/conversations/${conversation.id}` as any)}
-      className="flex-row items-center px-4 py-3 active:bg-surface-muted border-b border-border"
+      onPress={() => router.push(("/conversations/" + c.id) as Href)}
+      className="flex-row items-center px-4 py-3.5 active:opacity-70"
     >
-      <View className="w-10 h-10 rounded-full bg-primarySoft items-center justify-center mr-3">
-        <Text className="text-primary text-sm font-semibold">{display.slice(0, 1).toUpperCase()}</Text>
+      <View className="w-12 h-12 rounded-full bg-surface-muted items-center justify-center mr-3">
+        <Text className="text-text text-lg font-semibold">{initial}</Text>
       </View>
 
-      <View className="flex-1 min-w-0">
-        <View className="flex-row items-baseline justify-between">
-          <Text
-            numberOfLines={1}
-            className={"text-sm font-semibold flex-1 " + (hasUnread ? "text-text" : "text-textSecondary")}
-          >
-            {display}
+      <View className="flex-1">
+        <View className="flex-row items-center">
+          <Text className={"flex-1 text-base text-text " + (unread ? "font-semibold" : "font-medium")} numberOfLines={1}>
+            {name}
           </Text>
-          <Text className={"text-[11px] ml-2 " + (hasUnread ? "text-primary font-semibold" : "text-textMuted")}>
-            {relativeTimeShort(conversation.last_message_at)}
+          <Text className={"text-xs ml-2 " + (unread ? "text-primary font-semibold" : "text-textMuted")}>
+            {chatTime(c.last_message_at)}
           </Text>
         </View>
 
-        <View className="flex-row items-center justify-between mt-0.5">
-          <Text
-            numberOfLines={1}
-            className={"text-sm flex-1 " + (hasUnread ? "text-text font-medium" : "text-textMuted")}
-          >
-            {isOutbound ? "You: " : ""}{preview}
+        <View className="flex-row items-center mt-0.5">
+          <Text className={"flex-1 text-sm " + (unread ? "text-textSecondary" : "text-textMuted")} numberOfLines={1}>
+            {preview}
           </Text>
-          {hasUnread ? (
-            <View className="bg-primary rounded-full min-w-[20px] h-5 px-1.5 ml-2 items-center justify-center">
-              <Text className="text-white text-[10.5px] font-semibold">
-                {conversation.unread_count > 99 ? "99+" : String(conversation.unread_count)}
+          {unread ? (
+            <View
+              className="bg-primary items-center justify-center ml-2"
+              style={{ minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10 }}
+            >
+              <Text className="text-white text-xs font-semibold">
+                {c.unread_count > 99 ? "99+" : String(c.unread_count)}
               </Text>
             </View>
           ) : null}
         </View>
+
+        {c.channel ? <Text className="text-textMuted text-xs mt-1">{channelLabel(c.channel)}</Text> : null}
       </View>
     </Pressable>
   );

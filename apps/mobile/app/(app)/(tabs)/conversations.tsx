@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, RefreshControl, ScrollView, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { MessageCircle } from "lucide-react-native";
+import { MessageCircle, Search } from "lucide-react-native";
 import { colors as designColors } from "@1manbiz/design";
 
 import { getActiveBusinessId } from "../../../lib/business";
@@ -13,7 +13,16 @@ import {
 import { supabase } from "../../../lib/supabase";
 import { ConversationRow } from "../../../components/conversation-row";
 
+const CARD_SHADOW = {
+  shadowColor: "#0B0B0B",
+  shadowOpacity: 0.06,
+  shadowRadius: 14,
+  shadowOffset: { width: 0, height: 6 },
+  elevation: 2,
+} as const;
+
 type ChannelState = "unknown" | "not_connected" | "connected";
+type Filter = "all" | "unread";
 
 export default function ConversationsScreen() {
   const [loading, setLoading] = useState(true);
@@ -22,6 +31,8 @@ export default function ConversationsScreen() {
   const [channelState, setChannelState] = useState<ChannelState>("unknown");
   const [error, setError] = useState<string | null>(null);
   const [businessId, setBusinessId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
 
   const load = useCallback(async () => {
     setError(null);
@@ -95,22 +106,76 @@ export default function ConversationsScreen() {
     load();
   }, [load]);
 
+  const unreadCount = useMemo(
+    () => conversations.filter((c) => c.unread_count > 0).length,
+    [conversations],
+  );
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return conversations.filter((c) => {
+      if (filter === "unread" && !(c.unread_count > 0)) return false;
+      if (!q) return true;
+      const hay = [c.customer_name, c.contact_phone_e164, c.last_message_preview]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [conversations, query, filter]);
+
+  const showTools = channelState === "connected" && conversations.length > 0;
+
   return (
     <SafeAreaView className="flex-1 bg-background">
-      <View className="px-6 pt-8 pb-4">
-        <Text className="text-text text-3xl font-bold">Conversations</Text>
-        <Text className="text-textMuted text-base mt-1">Inbound chats across channels</Text>
+      <View className="px-6 pt-8 pb-3">
+        <Text className="text-text text-3xl font-bold">Chats</Text>
+        <Text className="text-textMuted text-base mt-1">Customer conversations and AI replies</Text>
       </View>
+
+      {showTools ? (
+        <View className="px-6 pb-2">
+          <View className="flex-row items-center bg-surface-muted rounded-2xl px-3.5 py-2.5">
+            <Search size={18} color={designColors.textMuted} strokeWidth={2} />
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search customers, phone, messages..."
+              placeholderTextColor={designColors.textMuted}
+              className="flex-1 text-text text-base ml-2"
+              style={{ paddingVertical: 0 }}
+              returnKeyType="search"
+              autoCapitalize="none"
+            />
+          </View>
+
+          <View className="flex-row mt-3">
+            <Pressable
+              onPress={() => setFilter("all")}
+              className={"rounded-full px-4 py-1.5 mr-2 active:opacity-80 " + (filter === "all" ? "bg-primary" : "bg-surface-muted")}
+              hitSlop={4}
+            >
+              <Text className={"text-sm font-medium " + (filter === "all" ? "text-white" : "text-textMuted")}>All</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setFilter("unread")}
+              className={"rounded-full px-4 py-1.5 active:opacity-80 " + (filter === "unread" ? "bg-primary" : "bg-surface-muted")}
+              hitSlop={4}
+            >
+              <Text className={"text-sm font-medium " + (filter === "unread" ? "text-white" : "text-textMuted")}>
+                {unreadCount > 0 ? "Unread " + unreadCount : "Unread"}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
 
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingBottom: 24 }}
+        contentContainerStyle={{ paddingBottom: 24, paddingTop: 4 }}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={designColors.primary}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={designColors.primary} />
         }
       >
         {loading && !refreshing ? (
@@ -141,10 +206,19 @@ export default function ConversationsScreen() {
               Send a test message to your WhatsApp number to see it appear here.
             </Text>
           </View>
+        ) : filtered.length === 0 ? (
+          <View className="px-6 pt-16 items-center">
+            <Text className="text-text text-base font-medium">No matches</Text>
+            <Text className="text-textMuted text-sm mt-1 text-center">
+              {filter === "unread" ? "No unread chats right now." : "No chats match your search."}
+            </Text>
+          </View>
         ) : (
-          <View>
-            {conversations.map((c) => (
-              <ConversationRow key={c.id} conversation={c} />
+          <View className="mx-6 bg-white rounded-3xl overflow-hidden" style={CARD_SHADOW}>
+            {filtered.map((c, idx) => (
+              <View key={c.id} className={idx === 0 ? "" : "border-t border-gray-100"}>
+                <ConversationRow conversation={c} />
+              </View>
             ))}
           </View>
         )}
