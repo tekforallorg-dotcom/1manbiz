@@ -163,6 +163,7 @@ export async function draftReply(args: {
       "    If the customer confirms the order or says that is all (confirm, that is all, done, looks good, go ahead): action 'confirm'.\n" +
       "    To cancel the order: action 'cancel'.\n" +
       "    If a current order exists and the customer asks to start a separate new order: action 'none'; say you will add to their current order or can cancel it first, and ask which.\n" +
+      "    If the item the customer names matches more than one product in CATALOG (a brand or product family named with no specific model): action 'none'; do not choose for them. List the matching products with their prices and ask which one they want. Only act once they name a specific product.\n" +
       "    If a requested product is not in CATALOG: action 'none'; ask them to choose from the list. Never invent a product or a price.\n" +
       "    If a product is shown as out of stock in CATALOG: action 'none'; tell the customer it is out of stock and offer an in-stock item. Do not add an out-of-stock product.\n" +
       "    Never say the order is placed or paid; the shop owner sends the payment link.\n"
