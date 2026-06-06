@@ -103,6 +103,7 @@ export async function draftReply(args: {
   currentBooking?: { title: string; whenLabel: string } | null;
   offersOrders?: boolean;
   currentOrder?: { label: string } | null;
+  recentPaidOrders?: string | null;
 }): Promise<DraftReplyResult> {
   const { apiKey, messages, catalog, tone, language } = args;
   const deliveryZones = args.deliveryZones ?? [];
@@ -111,6 +112,7 @@ export async function draftReply(args: {
   const currentBooking = args.currentBooking ?? null;
   const offersOrders = args.offersOrders ?? false;
   const currentOrder = args.currentOrder ?? null;
+  const recentPaidOrders = args.recentPaidOrders ?? null;
 
   const lines: string[] = [];
   let latest = "";
@@ -239,11 +241,16 @@ export async function draftReply(args: {
         ? "CURRENT ORDER: " + currentOrder.label + " (pending). Add to, change, or cancel THIS order; do not start a second one.\n\n"
         : "CURRENT ORDER: none (no open cart). If an earlier message in this chat mentioned an order (even one described as confirmed), it has since been paid or cancelled and is now closed; it is NOT an open cart. Do not say the customer already has an order, and do not offer to add to or cancel it. Treat any order request as a brand-new order (action 'create'). You may still answer a direct question about a past order if the customer explicitly asks about it.\n\n")
     : "";
+  const recentPaidOrdersBlock =
+    offersOrders && recentPaidOrders
+      ? "RECENT PAID ORDERS (already completed, newest first, for reference only):\n" + recentPaidOrders + "\nIf the customer asks about a past or paid order (for example my last order, the order I paid for, my receipt), answer from this list with the items, total, and receipt code. These are completed and are NOT the open cart.\n\n"
+      : "";
 
   const user =
     nowBlock +
     currentBookingBlock +
     currentOrderBlock +
+    recentPaidOrdersBlock +
     "CATALOG (name | price | availability):\n" +
     catalogBlock +
     "\n\nDELIVERY (area: fee (note)):\n" +

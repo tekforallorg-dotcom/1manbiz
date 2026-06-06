@@ -208,6 +208,37 @@ export async function maybeAutoReply(args: {
     content: k.content as string,
   }));
 
+  // Last few completed orders, so the model can answer "my last paid order".
+  let recentPaidOrders: string | null = null;
+  if (offersOrders && customerId) {
+    const { data: paidRows } = await admin
+      .from("orders")
+      .select("subtotal_kobo, receipt_code, paid_at, order_items(name_snapshot, quantity)")
+      .eq("business_id", businessId)
+      .eq("customer_id", customerId)
+      .eq("status", "paid")
+      .order("paid_at", { ascending: false })
+      .limit(3);
+    type PaidRow = {
+      subtotal_kobo: number;
+      receipt_code: string | null;
+      paid_at: string | null;
+      order_items: Array<{ name_snapshot: string | null; quantity: number | null }> | null;
+    };
+    const fmtDate = (iso: string) =>
+      new Intl.DateTimeFormat("en-NG", { timeZone: "Africa/Lagos", day: "numeric", month: "short", year: "numeric" }).format(new Date(iso));
+    const paidLines = ((paidRows ?? []) as unknown as PaidRow[]).map((o) => {
+      const itemsText =
+        (o.order_items ?? [])
+          .map((i) => (i.quantity ?? 1) + "x " + (i.name_snapshot ?? "item"))
+          .join(", ") || "order";
+      const code = o.receipt_code ?? "n/a";
+      const when = o.paid_at ? ", paid " + fmtDate(o.paid_at) : "";
+      return "- " + itemsText + ", total " + formatNairaFromKobo(Number(o.subtotal_kobo)) + ", receipt " + code + when;
+    });
+    if (paidLines.length > 0) recentPaidOrders = paidLines.join("\n");
+  }
+
   const tone = (business.ai_tone as string | null) ?? "friendly";
   const language = (business.ai_language as string | null) ?? "en";
 
@@ -217,6 +248,7 @@ export async function maybeAutoReply(args: {
   const result = await draftReply({
     apiKey, messages, catalog, deliveryZones, knowledgeItems, tone, language,
     offersBookings, currentBooking, offersOrders, currentOrder: currentOrderForPrompt,
+    recentPaidOrders,
   });
   void broadcastTyping(conversationId, "stop");
   if (!result.ok) {
