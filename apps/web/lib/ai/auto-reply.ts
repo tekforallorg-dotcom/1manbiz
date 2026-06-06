@@ -52,11 +52,25 @@ function whenLabel(iso: string): string {
     hour: "2-digit", minute: "2-digit", hour12: false,
   }).format(new Date(iso));
 }
-function composeBookingConfirmation(title: string, iso: string): string {
-  return 'Noted. I have pencilled in "' + title + '" for ' + whenLabel(iso) + ' (WAT). We will confirm shortly.';
+// "Mon, 8 Jun at 14:00" for the customer-facing booking summary.
+function whenLabelAt(iso: string): string {
+  const d = new Date(iso);
+  const datePart = new Intl.DateTimeFormat("en-NG", {
+    timeZone: "Africa/Lagos", weekday: "short", day: "numeric", month: "short",
+  }).format(d);
+  const timePart = new Intl.DateTimeFormat("en-NG", {
+    timeZone: "Africa/Lagos", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(d);
+  return datePart + " at " + timePart;
 }
-function composeBookingUpdate(title: string, iso: string): string {
-  return 'Updated. "' + title + '" is now set for ' + whenLabel(iso) + ' (WAT). We will confirm shortly.';
+function composeBookingSummary(title: string, iso: string): string {
+  return "Here is your booking: " + title + " on " + whenLabelAt(iso) + " (WAT). Would you like to confirm it, or change the day or time?";
+}
+function composeBookingUpdateSummary(title: string, iso: string): string {
+  return "Updated. Here is your booking: " + title + " on " + whenLabelAt(iso) + " (WAT). Would you like to confirm it, or change the day or time?";
+}
+function composeBookingConfirmed(title: string, iso: string): string {
+  return "Your booking is confirmed: " + title + " on " + whenLabelAt(iso) + " (WAT). We look forward to seeing you.";
 }
 function composeBookingCancel(title: string): string {
   return 'Done. I have cancelled "' + title + '". Let us know if you would like to rebook.';
@@ -65,11 +79,18 @@ function composeBookingCancel(title: string): string {
 function lineText(snap: OrderSnapshot): string {
   return snap.lines.map((l) => l.quantity + "x " + l.name).join(", ");
 }
-function composeOrderCreated(snap: OrderSnapshot): string {
-  return "Got it. Your order: " + lineText(snap) + ". Total " + formatNairaFromKobo(snap.subtotalKobo) + ". The shop will send your payment link shortly.";
+function orderLines(snap: OrderSnapshot): string {
+  return snap.lines
+    .map((l) => l.quantity + "x " + l.name + " - " + formatNairaFromKobo(l.line_total_kobo))
+    .join("\n");
 }
-function composeOrderUpdated(snap: OrderSnapshot): string {
-  return "Updated. Your order: " + lineText(snap) + ". Total " + formatNairaFromKobo(snap.subtotalKobo) + ". The shop will send your payment link shortly.";
+function composeOrderSummary(snap: OrderSnapshot): string {
+  return "Here is your order:\n" + orderLines(snap) + "\nTotal: " + formatNairaFromKobo(snap.subtotalKobo) +
+    "\nWould you like to add anything else, or confirm your order?";
+}
+function composeOrderConfirmed(snap: OrderSnapshot): string {
+  return "Your order is confirmed:\n" + orderLines(snap) + "\nTotal: " + formatNairaFromKobo(snap.subtotalKobo) +
+    "\nWe will send you a payment link shortly.";
 }
 
 export async function maybeAutoReply(args: {
@@ -243,7 +264,7 @@ export async function maybeAutoReply(args: {
         admin, businessId, customerId, title: a.title || "Appointment", startsAtWatLocal: a.starts_at ?? "",
       });
       if (created.ok) {
-        bodyText = composeBookingConfirmation(a.title || "Appointment", created.startsAtIso);
+        bodyText = composeBookingSummary(a.title || "Appointment", created.startsAtIso);
         actionDecision = { kind: "booking", proposal: { action: "create_booking", booking_id: created.bookingId, starts_at: created.startsAtIso, title: a.title || "Appointment" } };
       } else {
         console.warn("[ai/auto-reply] booking create failed", created.error);
@@ -258,7 +279,7 @@ export async function maybeAutoReply(args: {
         if (edited.ok) {
           const iso = edited.startsAtIso ?? current.starts_at;
           const title = edited.title ?? current.title;
-          bodyText = composeBookingUpdate(title, iso);
+          bodyText = composeBookingUpdateSummary(title, iso);
           actionDecision = { kind: "booking", proposal: { action: "edit_booking", booking_id: current.id, starts_at: iso, title } };
         } else {
           console.warn("[ai/auto-reply] booking edit failed", edited.error);
@@ -279,13 +300,21 @@ export async function maybeAutoReply(args: {
           bodyText = "I could not cancel that booking. Please try again shortly.";
         }
       }
+    } else if (a.kind === "confirm") {
+      const current = await loadCurrentBooking(admin, businessId, customerId);
+      if (!current) {
+        bodyText = "I do not see a booking to confirm. Would you like to make one?";
+      } else {
+        bodyText = composeBookingConfirmed(current.title, current.starts_at);
+        actionDecision = { kind: "booking", proposal: { action: "confirm_booking", booking_id: current.id } };
+      }
     }
   } else if (offersOrders && result.orderAction && customerId) {
     const oa = result.orderAction;
     if (oa.kind === "create") {
       const created = await createOrder(admin, businessId, customerId, oa.items);
       if (created.ok) {
-        bodyText = composeOrderCreated(created.order);
+        bodyText = composeOrderSummary(created.order);
         actionDecision = { kind: "order_proposal", finalOrderId: created.order.orderId, itemCount: created.order.lines.length, proposal: { action: "create_order", order_id: created.order.orderId, subtotal_kobo: created.order.subtotalKobo, lines: created.order.lines } };
       } else if (created.code === "order_exists") {
         bodyText = "You already have an open order: " + lineText(created.order) + " (total " + formatNairaFromKobo(created.order.subtotalKobo) + "). Would you like to add to it, or cancel it and start a new one?";
@@ -312,6 +341,9 @@ export async function maybeAutoReply(args: {
           console.warn("[ai/auto-reply] order cancel failed", cancelled.error);
           bodyText = "I could not cancel that order. Please try again shortly.";
         }
+      } else if (oa.kind === "confirm") {
+        bodyText = composeOrderConfirmed(current);
+        actionDecision = { kind: "order_proposal", finalOrderId: current.orderId, itemCount: current.lines.length, proposal: { action: "confirm_order", order_id: current.orderId, subtotal_kobo: current.subtotalKobo } };
       } else {
         const item = oa.items[0];
         if (!item) {
@@ -327,7 +359,7 @@ export async function maybeAutoReply(args: {
               bodyText = "Your order is now empty. Tell me what to add, or say cancel to drop it.";
               actionDecision = { kind: "order_proposal", finalOrderId: res.order.orderId, itemCount: 0, proposal: { action: oa.kind, order_id: res.order.orderId } };
             } else {
-              bodyText = composeOrderUpdated(res.order);
+              bodyText = composeOrderSummary(res.order);
               actionDecision = { kind: "order_proposal", finalOrderId: res.order.orderId, itemCount: res.order.lines.length, proposal: { action: oa.kind, order_id: res.order.orderId, subtotal_kobo: res.order.subtotalKobo, lines: res.order.lines } };
             }
           } else if (res.code === "unresolved") {
