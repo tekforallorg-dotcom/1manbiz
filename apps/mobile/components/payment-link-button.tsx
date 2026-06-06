@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { View, Text, Pressable, ActivityIndicator } from "react-native";
+import { View, Text, Pressable, ActivityIndicator, Share } from "react-native";
 import { useRouter, type Href } from "expo-router";
-import { MessageCircle, ArrowRight } from "lucide-react-native";
+import { MessageCircle, ArrowRight, Share2 } from "lucide-react-native";
 import { colors as designColors } from "@1manbiz/design";
 
 import { supabase } from "../lib/supabase";
@@ -33,7 +33,9 @@ async function resolveConversationId(phoneE164: string): Promise<string | null> 
 export function PaymentLinkButton({ orderId, customerName, customerPhone, subtotalKobo }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [payUrl, setPayUrl] = useState<string | null>(null);
   const [sentConversationId, setSentConversationId] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
   const buildMessage = (url: string) => {
@@ -41,23 +43,13 @@ export function PaymentLinkButton({ orderId, customerName, customerPhone, subtot
     return who + "here is your secure payment link for " + formatNaira(subtotalKobo) + ": " + url;
   };
 
+  // Create the link once, then try to auto-send into the customer's live
+  // WhatsApp chat. If there is no chat or the 24h window has closed we do not
+  // dead-end: keep the link so the vendor can share it through any channel.
   const onSend = async () => {
     setProblem(null);
+    setNote(null);
     setLoading(true);
-
-    const phone = (customerPhone ?? "").trim();
-    if (!phone) {
-      setLoading(false);
-      setProblem("This customer has no phone on file, so there is no WhatsApp chat to send into.");
-      return;
-    }
-
-    const conversationId = await resolveConversationId(phone);
-    if (!conversationId) {
-      setLoading(false);
-      setProblem("No WhatsApp chat with this customer yet. The link can only be sent as a reply to a live chat.");
-      return;
-    }
 
     const init = await initPaymentLink(orderId);
     if (!init.ok) {
@@ -65,19 +57,41 @@ export function PaymentLinkButton({ orderId, customerName, customerPhone, subtot
       setProblem(init.error);
       return;
     }
+    setPayUrl(init.payUrl);
 
-    const result = await sendReply(conversationId, buildMessage(init.payUrl));
-    setLoading(false);
-    if (!result.ok) {
-      setProblem(
-        "Could not send to the chat (" + result.error +
-          "). If the customer has not messaged in the last 24h, WhatsApp needs an approved template - that is a separate step.",
+    const phone = (customerPhone ?? "").trim();
+    const conversationId = phone ? await resolveConversationId(phone) : null;
+
+    if (conversationId) {
+      const result = await sendReply(conversationId, buildMessage(init.payUrl));
+      if (result.ok) {
+        setLoading(false);
+        setSentConversationId(conversationId);
+        return;
+      }
+      setNote(
+        "Could not auto-send to WhatsApp (" + result.error +
+          "). If the customer has not messaged in 24h, WhatsApp needs an approved template. Share the link below instead.",
       );
-      return;
+    } else {
+      setNote(
+        phone
+          ? "No live WhatsApp chat with this customer, so I could not auto-send. Share the link below."
+          : "This customer has no phone on file. Share the link below.",
+      );
     }
-    setSentConversationId(conversationId);
+    setLoading(false);
   };
 
+  const onShare = async (url: string) => {
+    try {
+      await Share.share({ message: buildMessage(url) });
+    } catch {
+      // Sheet dismissed or unavailable; nothing to do.
+    }
+  };
+
+  // WhatsApp auto-send succeeded.
   if (sentConversationId) {
     return (
       <View style={{ gap: 8 }}>
@@ -96,6 +110,27 @@ export function PaymentLinkButton({ orderId, customerName, customerPhone, subtot
     );
   }
 
+  // Link created but not auto-sent: show it and let the vendor share it anywhere.
+  if (payUrl) {
+    return (
+      <View style={{ gap: 8 }}>
+        {note ? <Text className="text-textMuted text-sm px-1">{note}</Text> : null}
+        <View className="bg-white border border-gray-200 rounded-2xl px-4 py-3">
+          <Text className="text-textMuted text-xs uppercase tracking-wider mb-1">Payment link</Text>
+          <Text className="text-text text-sm" numberOfLines={2}>{payUrl}</Text>
+        </View>
+        <Pressable
+          onPress={() => onShare(payUrl)}
+          className="bg-primary rounded-2xl py-4 items-center active:opacity-80 flex-row justify-center"
+        >
+          <Share2 size={18} color="#FFFFFF" />
+          <Text className="text-white text-base font-semibold ml-2">Share payment link</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  // Initial state.
   return (
     <View style={{ gap: 8 }}>
       <Pressable
