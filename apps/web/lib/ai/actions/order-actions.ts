@@ -20,6 +20,9 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
+export type FulfillmentType = "delivery" | "pickup";
+export type PaymentMethod = "online" | "on_delivery" | "at_store";
+
 export interface OrderLineView {
   name: string;
   quantity: number;
@@ -30,6 +33,12 @@ export interface OrderSnapshot {
   orderId: string;
   subtotalKobo: number;
   lines: OrderLineView[];
+  confirmedAt: string | null;
+  fulfillmentType: FulfillmentType | null;
+  deliveryZoneId: string | null;
+  deliveryAddress: string | null;
+  deliveryFeeKobo: number;
+  paymentMethod: PaymentMethod | null;
 }
 
 export interface OrderItemInput {
@@ -94,7 +103,25 @@ async function readSnapshot(admin: AdminClient, orderId: string): Promise<OrderS
     line_total_kobo: Number(r.line_total_kobo),
   }));
   const subtotalKobo = lines.reduce((s, l) => s + l.line_total_kobo, 0);
-  return { orderId, subtotalKobo, lines };
+
+  const { data: orderRow } = await admin
+    .from("orders")
+    .select("confirmed_at, fulfillment_type, delivery_zone_id, delivery_address, delivery_fee_kobo, payment_method")
+    .eq("id", orderId)
+    .maybeSingle();
+  const o = (orderRow ?? {}) as Record<string, unknown>;
+
+  return {
+    orderId,
+    subtotalKobo,
+    lines,
+    confirmedAt: (o.confirmed_at as string | null) ?? null,
+    fulfillmentType: (o.fulfillment_type as FulfillmentType | null) ?? null,
+    deliveryZoneId: (o.delivery_zone_id as string | null) ?? null,
+    deliveryAddress: (o.delivery_address as string | null) ?? null,
+    deliveryFeeKobo: Number(o.delivery_fee_kobo ?? 0),
+    paymentMethod: (o.payment_method as PaymentMethod | null) ?? null,
+  };
 }
 
 // Snapshot that ALSO recomputes and persists orders.subtotal_kobo. The paid
@@ -347,4 +374,100 @@ export async function cancelOrder(
   const { error } = await admin.from("orders").update({ status: "cancelled" }).eq("id", orderId);
   if (error) return { ok: false, error: error.message };
   return { ok: true };
+}
+
+// Mark the cart confirmed (idempotent: only sets the first time, preserving the
+// original confirm time). Confirming locks the items and moves the order into
+// fulfillment collection; the order stays pending until paid.
+export async function markConfirmed(admin: AdminClient, orderId: string): Promise<OrderSnapshot> {
+  await admin
+    .from("orders")
+    .update({ confirmed_at: new Date().toISOString() })
+    .eq("id", orderId)
+    .is("confirmed_at", null);
+  return readSnapshot(admin, orderId);
+}
+
+// Set delivery vs pickup. Switching to pickup clears any delivery zone/fee so a
+// changed mind cannot leave a stale delivery charge on the order.
+export async function setFulfillment(
+  admin: AdminClient,
+  orderId: string,
+  type: FulfillmentType,
+): Promise<OrderSnapshot> {
+  const patch: Record<string, unknown> = { fulfillment_type: type };
+  if (type === "pickup") {
+    patch.delivery_zone_id = null;
+    patch.delivery_address = null;
+    patch.delivery_fee_kobo = 0;
+  }
+  await admin.from("orders").update(patch).eq("id", orderId);
+  return readSnapshot(admin, orderId);
+}
+
+export type SetDeliveryAreaResult =
+  | { ok: true; order: OrderSnapshot; zoneLabel: string; feeKobo: number }
+  | { ok: false; code: "no_match"; zones: Array<{ label: string; feeKobo: number }> }
+  | { ok: false; code: "error"; message: string };
+
+// Resolve the customer's stated area to an ACTIVE delivery zone and store the
+// zone-defined fee on the order. The model never sets the fee; it only proposes
+// the area, exactly as it proposes product names. No zone match -> no_match with
+// the list of areas we cover so the caller can say we do not deliver there.
+export async function setDeliveryArea(
+  admin: AdminClient,
+  businessId: string,
+  orderId: string,
+  area: string,
+): Promise<SetDeliveryAreaResult> {
+  const trimmed = (area || "").trim();
+  const { data: zoneRows } = await admin
+    .from("delivery_zones")
+    .select("id, label, fee_kobo, active, sort_order")
+    .eq("business_id", businessId)
+    .eq("active", true)
+    .order("sort_order", { ascending: true });
+  const zones = (zoneRows ?? []) as Array<{ id: string; label: string; fee_kobo: number }>;
+  const cover = () => zones.map((z) => ({ label: z.label, feeKobo: Number(z.fee_kobo) }));
+  if (zones.length === 0 || !trimmed) return { ok: false, code: "no_match", zones: cover() };
+
+  const a = trimmed.toLowerCase();
+  const norm = (s: string) => s.toLowerCase();
+  const match =
+    zones.find((z) => norm(z.label) === a) ||
+    zones.find((z) => a.length >= 3 && (norm(z.label).includes(a) || a.includes(norm(z.label)))) ||
+    zones.find((z) =>
+      norm(z.label)
+        .split(/[^a-z0-9]+/)
+        .some((tok) => tok.length >= 3 && a.includes(tok)),
+    );
+  if (!match) return { ok: false, code: "no_match", zones: cover() };
+
+  const { error } = await admin
+    .from("orders")
+    .update({
+      delivery_zone_id: match.id,
+      delivery_address: trimmed,
+      delivery_fee_kobo: Number(match.fee_kobo),
+    })
+    .eq("id", orderId);
+  if (error) return { ok: false, code: "error", message: error.message };
+
+  return {
+    ok: true,
+    order: await readSnapshot(admin, orderId),
+    zoneLabel: match.label,
+    feeKobo: Number(match.fee_kobo),
+  };
+}
+
+// Record how the customer will pay. online -> a Paystack link is sent for goods
+// + delivery; on_delivery / at_store stay unpaid until the vendor marks paid.
+export async function setPaymentMethod(
+  admin: AdminClient,
+  orderId: string,
+  method: PaymentMethod,
+): Promise<OrderSnapshot> {
+  await admin.from("orders").update({ payment_method: method }).eq("id", orderId);
+  return readSnapshot(admin, orderId);
 }

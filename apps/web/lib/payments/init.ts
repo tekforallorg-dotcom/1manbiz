@@ -69,7 +69,7 @@ export async function initPaymentForBusinessOrder(
   const { data: order, error: orderErr } = await admin
     .from("orders")
     .select(
-      "id, business_id, status, subtotal_kobo, currency, customer:customers(id, name, email)",
+      "id, business_id, status, subtotal_kobo, delivery_fee_kobo, currency, customer:customers(id, name, email)",
     )
     .eq("id", orderId)
     .eq("business_id", businessId)
@@ -91,6 +91,11 @@ export async function initPaymentForBusinessOrder(
     return { ok: false, error: "Order has no payable amount", status: 400 };
   }
 
+  // Charge goods + delivery. subtotal_kobo stays goods-only (lifetime spend);
+  // delivery_fee_kobo is 0 unless a delivery zone was set on the order.
+  const deliveryFeeKobo = Number((order as { delivery_fee_kobo?: number | null }).delivery_fee_kobo ?? 0);
+  const amountKobo = Number(order.subtotal_kobo) + (Number.isFinite(deliveryFeeKobo) ? deliveryFeeKobo : 0);
+
   const customer = Array.isArray(order.customer) ? order.customer[0] : order.customer;
   const customerEmail =
     customer && typeof customer.email === "string" && customer.email.includes("@")
@@ -102,10 +107,10 @@ export async function initPaymentForBusinessOrder(
 
   const init = await initializeTransaction({
     email: customerEmail,
-    amountKobo: order.subtotal_kobo,
+    amountKobo,
     reference,
     callbackUrl,
-    metadata: { order_id: order.id, business_id: businessId },
+    metadata: { order_id: order.id, business_id: businessId, delivery_fee_kobo: deliveryFeeKobo },
   });
 
   if (!init.ok) {
@@ -118,7 +123,7 @@ export async function initPaymentForBusinessOrder(
     business_id: businessId,
     provider: "paystack",
     provider_reference: init.reference,
-    amount_kobo: order.subtotal_kobo,
+    amount_kobo: amountKobo,
     currency: order.currency ?? "NGN",
     status: "pending",
     authorization_url: init.authorizationUrl,
@@ -137,7 +142,7 @@ export async function initPaymentForBusinessOrder(
     ok: true,
     authorizationUrl: init.authorizationUrl,
     reference: init.reference,
-    amountKobo: order.subtotal_kobo,
+    amountKobo,
     orderId: order.id,
     customerId: customer?.id ?? null,
   };
