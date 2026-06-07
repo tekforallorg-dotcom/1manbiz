@@ -56,9 +56,9 @@ type OrderRow = {
 
 export async function sendReceiptForOrder(
   admin: AdminClient,
-  args: { orderId: string; origin: string },
+  args: { orderId: string; origin: string; force?: boolean },
 ): Promise<SendReceiptResult> {
-  const { orderId, origin } = args;
+  const { orderId, origin, force = false } = args;
 
   const { data, error: orderErr } = await admin
     .from("orders")
@@ -77,7 +77,7 @@ export async function sendReceiptForOrder(
 
   if (order.status !== "paid") return { sent: false, reason: "not_paid" };
   if (!order.receipt_code) return { sent: false, reason: "no_receipt_code" };
-  if (order.receipt_sent_at) return { sent: false, reason: "already_sent" };
+  if (order.receipt_sent_at && !force) return { sent: false, reason: "already_sent" };
   if (!order.customer_id) return { sent: false, reason: "no_channel" };
 
   const businessName = pickName(order.businesses) ?? "the shop";

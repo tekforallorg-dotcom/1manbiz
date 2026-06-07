@@ -1,9 +1,9 @@
 import { useCallback, useState } from "react";
-import { View, Text, ScrollView, ActivityIndicator, Pressable, Linking, Share } from "react-native";
+import { View, Text, ScrollView, ActivityIndicator, Pressable, Linking, Share, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
-import { ExternalLink, Share2 } from "lucide-react-native";
-import { fetchOrderDetail, type OrderDetail } from "../../../lib/order-detail";
+import { ExternalLink, Share2, Send } from "lucide-react-native";
+import { fetchOrderDetail, resendReceipt, type OrderDetail } from "../../../lib/order-detail";
 import { formatNaira, nairaParts, formatDateTime } from "../../../lib/format";
 import { API_BASE_URL } from "../../../lib/config";
 import { ScreenHeader } from "../../../components/screen-header";
@@ -17,6 +17,7 @@ export default function ReceiptDetailScreen() {
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [resending, setResending] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -35,6 +36,25 @@ export default function ReceiptDetailScreen() {
       return () => { cancelled = true; };
     }, [load]),
   );
+
+  const doResend = async () => {
+    if (!order) return;
+    setResending(true);
+    const result = await resendReceipt(order.id);
+    setResending(false);
+    if (!result.ok) {
+      Alert.alert("Could not resend", result.error ?? "Please try again.");
+      return;
+    }
+    if (result.sent) {
+      Alert.alert("Receipt sent", "The receipt was sent to " + (order.customer_name ?? "the customer") + " on WhatsApp.");
+    } else {
+      Alert.alert(
+        "Not sent on WhatsApp",
+        "We could not message the customer right now (their chat window may be closed). Use Share link to send it another way.",
+      );
+    }
+  };
 
   const handleViewReceipt = () => {
     if (!order?.receipt_code) return;
@@ -137,11 +157,25 @@ export default function ReceiptDetailScreen() {
       <View className="absolute left-0 right-0 bottom-0 px-6 pb-6 pt-3 bg-background border-t border-gray-100">
         <View style={{ gap: 10 }}>
           <Pressable
-            onPress={handleSendReceipt}
+            onPress={doResend}
+            disabled={resending}
             className="bg-primary rounded-2xl py-4 items-center active:opacity-80 flex-row justify-center"
           >
-            <Share2 size={18} color="#FFFFFF" strokeWidth={2} />
-            <Text className="text-white text-base font-semibold ml-2">Send receipt</Text>
+            {resending ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <>
+                <Send size={18} color="#FFFFFF" strokeWidth={2} />
+                <Text className="text-white text-base font-semibold ml-2">Resend to customer</Text>
+              </>
+            )}
+          </Pressable>
+          <Pressable
+            onPress={handleSendReceipt}
+            className="bg-white border border-gray-200 rounded-2xl py-4 items-center active:opacity-60 flex-row justify-center"
+          >
+            <Share2 size={18} color={designColors.text} strokeWidth={2} />
+            <Text className="text-text text-base font-semibold ml-2">Share link</Text>
           </Pressable>
           <Pressable
             onPress={handleViewReceipt}

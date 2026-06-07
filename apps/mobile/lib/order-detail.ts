@@ -139,3 +139,41 @@ export async function cancelOrder(orderId: string): Promise<{ ok: boolean; error
   }
   return { ok: true };
 }
+
+// Resend a paid order's receipt to the customer on WhatsApp. Explicit owner
+// action (force resend); the server bypasses the one-time dupe guard. Returns
+// sent:false with a reason when WhatsApp delivery is not possible (e.g. the 24h
+// window is closed) so the caller can suggest sharing the link instead.
+export async function resendReceipt(
+  orderId: string,
+): Promise<{ ok: boolean; sent?: boolean; reason?: string; error?: string }> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) return { ok: false, error: "You are not signed in." };
+
+  let res: Response;
+  try {
+    res = await fetch(API_BASE_URL + "/api/orders/resend-receipt", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token,
+      },
+      body: JSON.stringify({ orderId }),
+    });
+  } catch {
+    return { ok: false, error: "Network error. Check your connection and try again." };
+  }
+
+  let json: { ok?: boolean; sent?: boolean; reason?: string; error?: string };
+  try {
+    json = (await res.json()) as typeof json;
+  } catch {
+    return { ok: false, error: "Unexpected response from the server." };
+  }
+
+  if (!res.ok || !json.ok) {
+    return { ok: false, error: json.error ?? "Could not resend the receipt." };
+  }
+  return { ok: true, sent: json.sent, reason: json.reason };
+}
