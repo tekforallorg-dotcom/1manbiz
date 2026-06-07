@@ -2,14 +2,15 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { initializeTransaction } from "@/lib/paystack";
 
 /**
- * Shared payment-initialization core. Called by both /api/payments/init (the
- * route, used by mobile via Bearer + the browser console) and the web
- * sendPaymentLinkAction server action. Resolving order ownership, generating
- * the reference, calling Paystack, and recording the pending payment row all
- * live here so the two callers cannot drift.
+ * Shared payment-initialization core. Two entry points that must never drift:
+ *   - initPaymentForOrder(userId, ...)             -> vendor session (route + web action)
+ *   - initPaymentForBusinessOrder(businessId, ...) -> session-less WhatsApp AI
+ * The user-scoped wrapper resolves the business from userId then delegates, so
+ * the order lookup, reference generation, Paystack call, and pending-payment
+ * insert all live in one place.
  *
- * Money-safety: caller passes only userId + orderId. Amount, email, reference,
- * and metadata are all derived server-side from the owner-scoped order.
+ * Money-safety: callers pass only ids. Amount, email, reference, and metadata
+ * are all derived server-side from the resolved order; no caller can set money.
  */
 
 export type InitPaymentResult =
@@ -44,13 +45,34 @@ export async function initPaymentForOrder(
     .maybeSingle();
   if (!business) return { ok: false, error: "No business on file", status: 403 };
 
+  return initPaymentForBusinessOrder(business.id as string, orderId, origin);
+}
+
+/**
+ * Business-scoped payment initialization. Same money-safe path as the
+ * user-scoped wrapper above, but resolves the order by business_id directly so
+ * the session-less WhatsApp AI (which has businessId + orderId, no vendor auth)
+ * can mint a checkout link without drifting from the vendor path. The caller
+ * passes only ids; amount, email, reference, and metadata are all derived here
+ * from the business-scoped order, so the model can never set money.
+ */
+export async function initPaymentForBusinessOrder(
+  businessId: string,
+  orderId: string,
+  origin: string,
+): Promise<InitPaymentResult> {
+  if (!businessId) return { ok: false, error: "businessId required", status: 400 };
+  if (!orderId) return { ok: false, error: "orderId required", status: 400 };
+
+  const admin = createAdminClient();
+
   const { data: order, error: orderErr } = await admin
     .from("orders")
     .select(
       "id, business_id, status, subtotal_kobo, currency, customer:customers(id, name, email)",
     )
     .eq("id", orderId)
-    .eq("business_id", business.id)
+    .eq("business_id", businessId)
     .maybeSingle();
 
   if (orderErr) {
@@ -83,7 +105,7 @@ export async function initPaymentForOrder(
     amountKobo: order.subtotal_kobo,
     reference,
     callbackUrl,
-    metadata: { order_id: order.id, business_id: business.id },
+    metadata: { order_id: order.id, business_id: businessId },
   });
 
   if (!init.ok) {
@@ -93,7 +115,7 @@ export async function initPaymentForOrder(
 
   const { error: insertErr } = await admin.from("payments").insert({
     order_id: order.id,
-    business_id: business.id,
+    business_id: businessId,
     provider: "paystack",
     provider_reference: init.reference,
     amount_kobo: order.subtotal_kobo,

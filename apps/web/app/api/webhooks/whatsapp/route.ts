@@ -330,6 +330,9 @@ export async function POST(request: NextRequest) {
       // ----- Autonomous replies (brick 3) -----
       // Runs after all messages are persisted. maybeAutoReply self-gates on
       // ai_mode='autonomous' + high confidence, and never throws.
+      const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+      const proto = request.headers.get("x-forwarded-proto") ?? "https";
+      const origin = host ? proto + "://" + host : "https://1manbiz.vercel.app";
       for (const [convId, toE164] of autoReplyTargets) {
         try {
           await maybeAutoReply({
@@ -337,6 +340,7 @@ export async function POST(request: NextRequest) {
             conversationId: convId,
             channelAccountId,
             toE164,
+            origin,
           });
         } catch (e) {
           console.error("[whatsapp-webhook] auto-reply threw", e);

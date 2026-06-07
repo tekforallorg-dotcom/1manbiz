@@ -27,6 +27,7 @@ import {
   type OrderSnapshot,
   type EditOrderResult,
 } from "@/lib/ai/actions/order-actions";
+import { initPaymentForBusinessOrder } from "@/lib/payments/init";
 
 // Low-confidence fallback lines. When the model is not confident, we send one of
 // these at random (instead of going silent) to invite the customer to restate.
@@ -109,6 +110,11 @@ function composeOrderConfirmed(snap: OrderSnapshot): string {
   return "Your order is confirmed:\n" + orderLines(snap) + "\nTotal: " + formatNairaFromKobo(snap.subtotalKobo) +
     "\nWe will send you a payment link shortly.";
 }
+function composeOrderConfirmedWithLink(snap: OrderSnapshot, url: string): string {
+  return "Your order is confirmed:\n" + orderLines(snap) + "\nTotal: " + formatNairaFromKobo(snap.subtotalKobo) +
+    "\n\nPay securely here:\n" + url +
+    "\nYour receipt is sent automatically once payment is confirmed.";
+}
 function composeOrderDeclined(): string {
   return "Okay, no problem. Your order is saved, so just let us know whenever you are ready to confirm. Is there anything else I can help you with?";
 }
@@ -118,8 +124,9 @@ export async function maybeAutoReply(args: {
   conversationId: string;
   channelAccountId: string;
   toE164: string;
+  origin: string;
 }): Promise<void> {
-  const { businessId, conversationId, channelAccountId, toE164 } = args;
+  const { businessId, conversationId, channelAccountId, toE164, origin } = args;
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return;
@@ -129,7 +136,7 @@ export async function maybeAutoReply(args: {
   // Mode gate first (cheapest check -- skip everything if not autonomous).
   const { data: business } = await admin
     .from("businesses")
-    .select("id, ai_mode, ai_tone, ai_language, business_type")
+    .select("id, ai_mode, ai_tone, ai_language, business_type, ai_sends_payment_link")
     .eq("id", businessId)
     .maybeSingle();
   if (!business) return;
@@ -141,6 +148,7 @@ export async function maybeAutoReply(args: {
   const businessType = (business.business_type as string | null) ?? "product";
   const offersBookings = businessType === "service" || businessType === "hybrid";
   const offersOrders = businessType === "product" || businessType === "hybrid";
+  const aiSendsPaymentLink = business.ai_sends_payment_link === true;
 
   // Channel must be connected with usable per-tenant credentials.
   const { data: channel } = await admin
@@ -436,8 +444,22 @@ export async function maybeAutoReply(args: {
           bodyText = "I could not cancel that order. Please try again shortly.";
         }
       } else if (oa.kind === "confirm") {
-        bodyText = composeOrderConfirmed(current);
-        actionDecision = { kind: "order_proposal", finalOrderId: current.orderId, itemCount: current.lines.length, proposal: { action: "confirm_order", order_id: current.orderId, subtotal_kobo: current.subtotalKobo } };
+        const confirmProposal: Record<string, unknown> = { action: "confirm_order", order_id: current.orderId, subtotal_kobo: current.subtotalKobo };
+        if (aiSendsPaymentLink) {
+          const pay = await initPaymentForBusinessOrder(businessId, current.orderId, origin);
+          if (pay.ok) {
+            bodyText = composeOrderConfirmedWithLink(current, pay.authorizationUrl);
+            confirmProposal.payment_link_sent = true;
+            confirmProposal.payment_reference = pay.reference;
+          } else {
+            console.warn("[ai/auto-reply] payment link init failed", { orderId: current.orderId, error: pay.error });
+            bodyText = composeOrderConfirmed(current);
+            confirmProposal.payment_link_sent = false;
+          }
+        } else {
+          bodyText = composeOrderConfirmed(current);
+        }
+        actionDecision = { kind: "order_proposal", finalOrderId: current.orderId, itemCount: current.lines.length, proposal: confirmProposal };
       } else if (oa.kind === "decline") {
         bodyText = composeOrderDeclined();
         actionDecision = { kind: "order_proposal", finalOrderId: current.orderId, itemCount: current.lines.length, proposal: { action: "decline_order", order_id: current.orderId, subtotal_kobo: current.subtotalKobo } };
