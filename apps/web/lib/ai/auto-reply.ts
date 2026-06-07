@@ -227,14 +227,15 @@ export async function maybeAutoReply(args: {
     };
     const fmtDate = (iso: string) =>
       new Intl.DateTimeFormat("en-NG", { timeZone: "Africa/Lagos", day: "numeric", month: "short", year: "numeric" }).format(new Date(iso));
-    const paidLines = ((paidRows ?? []) as unknown as PaidRow[]).map((o) => {
+    const paidLines = ((paidRows ?? []) as unknown as PaidRow[]).map((o, idx) => {
       const itemsText =
         (o.order_items ?? [])
           .map((i) => (i.quantity ?? 1) + "x " + (i.name_snapshot ?? "item"))
           .join(", ") || "order";
       const code = o.receipt_code ?? "n/a";
       const when = o.paid_at ? ", paid " + fmtDate(o.paid_at) : "";
-      return "- " + itemsText + ", total " + formatNairaFromKobo(Number(o.subtotal_kobo)) + ", receipt " + code + when;
+      const tag = idx === 0 ? " (most recent paid order)" : "";
+      return (idx + 1) + ". " + itemsText + ", total " + formatNairaFromKobo(Number(o.subtotal_kobo)) + ", receipt " + code + when + tag;
     });
     if (paidLines.length > 0) recentPaidOrders = paidLines.join("\n");
   }

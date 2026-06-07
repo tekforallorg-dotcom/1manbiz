@@ -243,7 +243,7 @@ export async function draftReply(args: {
     : "";
   const recentPaidOrdersBlock =
     offersOrders && recentPaidOrders
-      ? "RECENT PAID ORDERS (already completed, newest first, for reference only):\n" + recentPaidOrders + "\nIf the customer asks about a past or paid order (for example my last order, the order I paid for, my receipt), answer from this list with the items, total, and receipt code. These are completed and are NOT the open cart.\n\n"
+      ? "RECENT PAID ORDERS (already completed, ranked newest first; entry 1 is the most recent):\n" + recentPaidOrders + "\nWhen the customer asks about their last or most recent paid order, answer with entry 1 exactly (its items, total, and receipt). Do not reorder this list and do not pick a different entry just because it matches the current cart's product. For an older order use the matching numbered entry. These are completed and are NOT the open cart.\n\n"
       : "";
 
   const user =
