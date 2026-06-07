@@ -51,8 +51,14 @@ export interface OrderActionItem {
 }
 
 export interface OrderAction {
-  kind: "create" | "add_item" | "remove_item" | "set_quantity" | "replace_item" | "cancel" | "confirm" | "decline";
+  kind:
+    | "create" | "add_item" | "remove_item" | "set_quantity" | "replace_item"
+    | "cancel" | "confirm" | "decline"
+    | "set_fulfillment" | "set_delivery_area" | "set_payment_method";
   items: OrderActionItem[];
+  fulfillment?: "delivery" | "pickup";
+  area?: string;
+  payment_method?: "online" | "on_delivery" | "at_store";
 }
 
 export type DraftReplyResult =
@@ -102,7 +108,14 @@ export async function draftReply(args: {
   offersBookings?: boolean;
   currentBooking?: { title: string; whenLabel: string } | null;
   offersOrders?: boolean;
-  currentOrder?: { label: string } | null;
+  currentOrder?: {
+    label: string;
+    confirmed?: boolean;
+    fulfillmentType?: "delivery" | "pickup" | null;
+    deliveryLabel?: string | null;
+    awaiting?: "items" | "fulfillment" | "delivery_area" | "payment_method" | "complete";
+  } | null;
+  aiSendsPaymentLink?: boolean;
   recentPaidOrders?: string | null;
 }): Promise<DraftReplyResult> {
   const { apiKey, messages, catalog, tone, language } = args;
@@ -112,6 +125,7 @@ export async function draftReply(args: {
   const currentBooking = args.currentBooking ?? null;
   const offersOrders = args.offersOrders ?? false;
   const currentOrder = args.currentOrder ?? null;
+  const aiSendsPaymentLink = args.aiSendsPaymentLink ?? false;
   const recentPaidOrders = args.recentPaidOrders ?? null;
 
   const lines: string[] = [];
@@ -173,6 +187,14 @@ export async function draftReply(args: {
       "    Never say the order is placed or paid; the shop owner sends the payment link.\n"
     : "- order intent: confirm item, quantity, and line total from CATALOG, and ask for delivery area or name if missing. Do NOT say the order is placed; the shop owner sends the payment link.\n";
 
+  const fulfillmentRule =
+    offersOrders && aiSendsPaymentLink
+      ? "- fulfillment, ONLY after the order is confirmed (the CURRENT ORDER line states what is AWAITING). Do not ask or restate these questions; the shop sends the exact wording. Classify the customer's latest answer:\n" +
+        "    Choosing or switching delivery vs pickup: action 'set_fulfillment', fulfillment = 'delivery' or 'pickup'.\n" +
+        "    Giving the delivery area (when awaiting delivery area): action 'set_delivery_area', area = the matching DELIVERY zone label EXACTLY if it clearly matches one, else area = exactly what the customer said. Never set a fee; the shop resolves it from the zone.\n" +
+        "    Choosing how to pay (when awaiting payment method): action 'set_payment_method', payment_method = 'online' (pay online, card, transfer, pay now), 'on_delivery' (pay on delivery, POD) for delivery, or 'at_store' (pay at the store) for pickup.\n"
+      : "";
+
   const bookingRule = offersBookings
     ? "- booking intent, set the booking object:\n" +
       "    If there is NO current booking and the customer gave a specific day AND time: action 'create', starts_at = that moment as YYYY-MM-DDTHH:MM in 24h WAT resolved against CURRENT TIME below, title = the service named or 'Appointment' (short, no invented descriptions). Reply that you noted it and will confirm.\n" +
@@ -186,8 +208,14 @@ export async function draftReply(args: {
   const bookingField = offersBookings
     ? '"booking":{"action":"none|create|edit|cancel|confirm|decline","starts_at":"YYYY-MM-DDTHH:MM","title":"<short label>"},'
     : "";
+  const orderActionEnum = aiSendsPaymentLink
+    ? "none|create|add_item|remove_item|set_quantity|replace_item|cancel|confirm|decline|set_fulfillment|set_delivery_area|set_payment_method"
+    : "none|create|add_item|remove_item|set_quantity|replace_item|cancel|confirm|decline";
+  const orderFulfillmentFields = aiSendsPaymentLink
+    ? ',"fulfillment":"delivery|pickup","area":"<delivery area>","payment_method":"online|on_delivery|at_store"'
+    : "";
   const orderField = offersOrders
-    ? '"order":{"action":"none|create|add_item|remove_item|set_quantity|replace_item|cancel|confirm|decline","items":[{"name":"<exact catalog product name>","qty":<integer>}]},'
+    ? '"order":{"action":"' + orderActionEnum + '","items":[{"name":"<exact catalog product name>","qty":<integer>}]' + orderFulfillmentFields + '},'
     : "";
   const intentOptions =
     "product|delivery|policy|order|" + (offersBookings ? "booking|" : "") + "greeting|other";
@@ -217,9 +245,10 @@ export async function draftReply(args: {
     "- If already_sent is true, do NOT paste that block again; answer the new point in words and refer back ('as listed above').\n" +
     "- Quote names, prices, fees, and policies EXACTLY as written. Never invent or estimate. Never address the customer by a name unless they gave it in the conversation.\n" +
     orderRule +
+    fulfillmentRule +
     bookingRule +
     "- If source is 'none' because it is a complaint, haggling, a payment claim, or a custom request, or KNOWLEDGE does not cover a policy question: reply 'Let me check with the shop and get back to you shortly' and set confidence 'low'.\n\n" +
-    "confidence: send-readiness of this reply. Set 'high' for any reply that is safe to send now: a grounded answer from the named block, a greeting, any order create/add/remove/quantity/cancel/confirm or order question, or any booking create/edit/cancel/confirm or a booking clarifying question. Set 'low' ONLY when the reply is the 'let me check with the shop' holding reply (complaint, haggling, payment claim, or a policy KNOWLEDGE does not cover); those wait for the vendor.\n" +
+    "confidence: send-readiness of this reply. Set 'high' for any reply that is safe to send now: a grounded answer from the named block, a greeting, any order create/add/remove/quantity/cancel/confirm/set fulfillment/set delivery area/set payment method or order question, or any booking create/edit/cancel/confirm or a booking clarifying question. Set 'low' ONLY when the reply is the 'let me check with the shop' holding reply (complaint, haggling, payment claim, or a policy KNOWLEDGE does not cover); those wait for the vendor.\n" +
     "Tone: warm, brief, human, like a real shop attendant on WhatsApp. No 'Thank you for your inquiry'. No emojis unless the customer used one. " +
     "Language: '" + language + "'. Style: '" + tone + "'.\n\n" +
     "Respond with ONLY this JSON, no markdown fences, no prose:\n" +
@@ -236,9 +265,18 @@ export async function draftReply(args: {
         ? "CURRENT BOOKING: " + currentBooking.title + " on " + currentBooking.whenLabel + " (pending confirmation). Change or cancel THIS one; do not create another.\n\n"
         : "CURRENT BOOKING: none (no open booking). If an earlier message mentioned a booking, it is now closed and is NOT open. Do not say the customer already has a booking. Treat a new booking request as a brand-new booking (action 'create'). You may still answer a direct question about a past booking if the customer explicitly asks about it.\n\n")
     : "";
+  const orderPhaseLine = ((): string => {
+    if (!currentOrder) return "";
+    const a = currentOrder.awaiting ?? "items";
+    if (a === "fulfillment") return " Items are confirmed. The shop just asked DELIVERY or PICKUP; classify the customer's answer with set_fulfillment.";
+    if (a === "delivery_area") return " Items confirmed, delivery chosen. The shop just asked which AREA to deliver to; classify the answer with set_delivery_area.";
+    if (a === "payment_method") return " Items confirmed" + (currentOrder.fulfillmentType ? ", " + currentOrder.fulfillmentType : "") + (currentOrder.deliveryLabel ? " to " + currentOrder.deliveryLabel : "") + ". The shop just asked HOW the customer wants to pay; classify the answer with set_payment_method.";
+    if (a === "complete") return " This order is fully set; do not ask again.";
+    return " Add to, change, or cancel THIS order; do not start a second one.";
+  })();
   const currentOrderBlock = offersOrders
     ? (currentOrder
-        ? "CURRENT ORDER: " + currentOrder.label + " (pending). Add to, change, or cancel THIS order; do not start a second one.\n\n"
+        ? "CURRENT ORDER: " + currentOrder.label + " (pending)." + orderPhaseLine + "\n\n"
         : "CURRENT ORDER: none (no open cart). If an earlier message in this chat mentioned an order (even one described as confirmed), it has since been paid or cancelled and is now closed; it is NOT an open cart. Do not say the customer already has an order, and do not offer to add to or cancel it. Treat any order request as a brand-new order (action 'create'). You may still answer a direct question about a past order if the customer explicitly asks about it.\n\n")
     : "";
   const recentPaidOrdersBlock =
@@ -366,6 +404,16 @@ export async function draftReply(args: {
       } else if (action === "replace_item" && items.length >= 2) {
         const toItem = items[1];
         if (first && toItem) orderAction = { kind: "replace_item", items: [first, toItem] };
+      } else if (action === "set_fulfillment") {
+        const f = oo.fulfillment === "pickup" ? "pickup" : oo.fulfillment === "delivery" ? "delivery" : null;
+        if (f) orderAction = { kind: "set_fulfillment", items: [], fulfillment: f };
+      } else if (action === "set_delivery_area") {
+        const area = typeof oo.area === "string" ? oo.area.trim() : "";
+        if (area) orderAction = { kind: "set_delivery_area", items: [], area };
+      } else if (action === "set_payment_method") {
+        const pm = oo.payment_method;
+        const method = pm === "online" || pm === "on_delivery" || pm === "at_store" ? pm : null;
+        if (method) orderAction = { kind: "set_payment_method", items: [], payment_method: method };
       }
     }
   }

@@ -24,6 +24,10 @@ import {
   removeItem,
   setQuantity,
   cancelOrder,
+  markConfirmed,
+  setFulfillment,
+  setDeliveryArea,
+  setPaymentMethod,
   type OrderSnapshot,
   type EditOrderResult,
 } from "@/lib/ai/actions/order-actions";
@@ -110,10 +114,31 @@ function composeOrderConfirmed(snap: OrderSnapshot): string {
   return "Your order is confirmed:\n" + orderLines(snap) + "\nTotal: " + formatNairaFromKobo(snap.subtotalKobo) +
     "\nWe will send you a payment link shortly.";
 }
-function composeOrderConfirmedWithLink(snap: OrderSnapshot, url: string): string {
+function composeTotalsBlock(snap: OrderSnapshot): string {
+  if (snap.deliveryFeeKobo > 0) {
+    return "Goods: " + formatNairaFromKobo(snap.subtotalKobo) +
+      "\nDelivery: " + formatNairaFromKobo(snap.deliveryFeeKobo) +
+      "\nTotal: " + formatNairaFromKobo(snap.subtotalKobo + snap.deliveryFeeKobo);
+  }
+  return "Total: " + formatNairaFromKobo(snap.subtotalKobo);
+}
+function composeFulfillmentQuestion(snap: OrderSnapshot): string {
   return "Your order is confirmed:\n" + orderLines(snap) + "\nTotal: " + formatNairaFromKobo(snap.subtotalKobo) +
+    "\n\nWould you like delivery, or pickup from our store?";
+}
+function composeOrderConfirmedWithLink(snap: OrderSnapshot, url: string): string {
+  return "Your order is confirmed:\n" + orderLines(snap) + "\n" + composeTotalsBlock(snap) +
     "\n\nPay securely here:\n" + url +
     "\nYour receipt is sent automatically once payment is confirmed.";
+}
+function composeOrderConfirmedOnDelivery(snap: OrderSnapshot): string {
+  return "Your order is confirmed for delivery" + (snap.deliveryAddress ? " to " + snap.deliveryAddress : "") + ":\n" +
+    orderLines(snap) + "\n" + composeTotalsBlock(snap) +
+    "\nPayable on delivery. We will reach out to arrange delivery.";
+}
+function composeOrderConfirmedPayElsewhere(snap: OrderSnapshot): string {
+  return "Your order is confirmed:\n" + orderLines(snap) + "\n" + composeTotalsBlock(snap) +
+    "\nWe will send you a payment link shortly.";
 }
 function composeOrderDeclined(): string {
   return "Okay, no problem. Your order is saved, so just let us know whenever you are ready to confirm. Is there anything else I can help you with?";
@@ -164,7 +189,13 @@ export async function maybeAutoReply(args: {
   // instead of inventing one. Database state is the truth fed to the model.
   let customerId: string | null = null;
   let currentBooking: { title: string; whenLabel: string } | null = null;
-  let currentOrderForPrompt: { label: string } | null = null;
+  let currentOrderForPrompt: {
+    label: string;
+    confirmed: boolean;
+    fulfillmentType: "delivery" | "pickup" | null;
+    deliveryLabel: string | null;
+    awaiting: "items" | "fulfillment" | "delivery_area" | "payment_method" | "complete";
+  } | null = null;
   if (offersBookings || offersOrders) {
     const { data: convo } = await admin
       .from("conversations")
@@ -179,7 +210,21 @@ export async function maybeAutoReply(args: {
     if (customerId && offersOrders) {
       const co = await loadCurrentOrder(admin, businessId, customerId);
       if (co && co.lines.length > 0) {
-        currentOrderForPrompt = { label: lineText(co) + "; subtotal " + formatNairaFromKobo(co.subtotalKobo) };
+        let awaiting: "items" | "fulfillment" | "delivery_area" | "payment_method" | "complete" = "items";
+        if (aiSendsPaymentLink && co.confirmedAt) {
+          if (!co.fulfillmentType) awaiting = "fulfillment";
+          else if (co.fulfillmentType === "pickup") awaiting = "complete"; // pickup parked in 2a; booking + payment in 2b
+          else if (co.fulfillmentType === "delivery" && !co.deliveryZoneId) awaiting = "delivery_area";
+          else if (!co.paymentMethod) awaiting = "payment_method";
+          else awaiting = "complete";
+        }
+        currentOrderForPrompt = {
+          label: lineText(co) + "; subtotal " + formatNairaFromKobo(co.subtotalKobo),
+          confirmed: !!co.confirmedAt,
+          fulfillmentType: co.fulfillmentType,
+          deliveryLabel: co.deliveryAddress,
+          awaiting,
+        };
       }
     }
   }
@@ -271,6 +316,7 @@ export async function maybeAutoReply(args: {
   const result = await draftReply({
     apiKey, messages, catalog, deliveryZones, knowledgeItems, tone, language,
     offersBookings, currentBooking, offersOrders, currentOrder: currentOrderForPrompt,
+    aiSendsPaymentLink,
     recentPaidOrders,
   });
   void broadcastTyping(conversationId, "stop");
@@ -444,22 +490,74 @@ export async function maybeAutoReply(args: {
           bodyText = "I could not cancel that order. Please try again shortly.";
         }
       } else if (oa.kind === "confirm") {
-        const confirmProposal: Record<string, unknown> = { action: "confirm_order", order_id: current.orderId, subtotal_kobo: current.subtotalKobo };
         if (aiSendsPaymentLink) {
-          const pay = await initPaymentForBusinessOrder(businessId, current.orderId, origin);
-          if (pay.ok) {
-            bodyText = composeOrderConfirmedWithLink(current, pay.authorizationUrl);
-            confirmProposal.payment_link_sent = true;
-            confirmProposal.payment_reference = pay.reference;
-          } else {
-            console.warn("[ai/auto-reply] payment link init failed", { orderId: current.orderId, error: pay.error });
-            bodyText = composeOrderConfirmed(current);
-            confirmProposal.payment_link_sent = false;
-          }
+          const snap = await markConfirmed(admin, current.orderId);
+          bodyText = composeFulfillmentQuestion(snap);
+          actionDecision = { kind: "order_proposal", finalOrderId: snap.orderId, itemCount: snap.lines.length, proposal: { action: "confirm_order", order_id: snap.orderId, subtotal_kobo: snap.subtotalKobo, awaiting: "fulfillment" } };
         } else {
           bodyText = composeOrderConfirmed(current);
+          actionDecision = { kind: "order_proposal", finalOrderId: current.orderId, itemCount: current.lines.length, proposal: { action: "confirm_order", order_id: current.orderId, subtotal_kobo: current.subtotalKobo } };
         }
-        actionDecision = { kind: "order_proposal", finalOrderId: current.orderId, itemCount: current.lines.length, proposal: confirmProposal };
+      } else if (oa.kind === "set_fulfillment") {
+        if (!current.confirmedAt) {
+          bodyText = composeOrderSummary(current);
+        } else {
+          const type = oa.fulfillment === "pickup" ? "pickup" : "delivery";
+          const snap = await setFulfillment(admin, current.orderId, type);
+          if (type === "delivery") {
+            bodyText = "Sure. Which area should we deliver to?";
+          } else {
+            bodyText = "Great, you can pick up from our store. The shop will arrange your pickup time with you shortly.";
+          }
+          actionDecision = { kind: "order_proposal", finalOrderId: snap.orderId, itemCount: snap.lines.length, proposal: { action: "set_fulfillment", order_id: snap.orderId, fulfillment_type: type } };
+        }
+      } else if (oa.kind === "set_delivery_area") {
+        if (!current.confirmedAt) {
+          bodyText = composeOrderSummary(current);
+        } else {
+          const res = await setDeliveryArea(admin, businessId, current.orderId, oa.area ?? "");
+          if (res.ok) {
+            bodyText = "Delivery to " + res.zoneLabel + " is " + formatNairaFromKobo(res.feeKobo) + "." +
+              "\nGoods: " + formatNairaFromKobo(res.order.subtotalKobo) +
+              "\nDelivery: " + formatNairaFromKobo(res.order.deliveryFeeKobo) +
+              "\nTotal: " + formatNairaFromKobo(res.order.subtotalKobo + res.order.deliveryFeeKobo) +
+              "\n\nWould you like to pay online now, or pay on delivery?";
+            actionDecision = { kind: "order_proposal", finalOrderId: res.order.orderId, itemCount: res.order.lines.length, proposal: { action: "set_delivery_area", order_id: res.order.orderId, zone: res.zoneLabel, delivery_fee_kobo: res.feeKobo } };
+          } else if (res.code === "no_match") {
+            const areas = res.zones.map((z) => z.label).join(", ");
+            bodyText = areas
+              ? "We do not deliver to that area. We currently deliver to: " + areas + ". Which of these works for you?"
+              : "We do not have delivery areas set up right now. Would you like to pick up from our store instead?";
+          } else {
+            console.warn("[ai/auto-reply] set delivery area failed", res.message);
+            bodyText = "I could not set that delivery area. Please try again shortly.";
+          }
+        }
+      } else if (oa.kind === "set_payment_method") {
+        if (!current.confirmedAt) {
+          bodyText = composeOrderSummary(current);
+        } else {
+          const method = oa.payment_method === "on_delivery" ? "on_delivery" : oa.payment_method === "at_store" ? "at_store" : "online";
+          const snap = await setPaymentMethod(admin, current.orderId, method);
+          if (method === "online") {
+            const pay = await initPaymentForBusinessOrder(businessId, snap.orderId, origin);
+            if (pay.ok) {
+              bodyText = composeOrderConfirmedWithLink(snap, pay.authorizationUrl);
+              actionDecision = { kind: "order_proposal", finalOrderId: snap.orderId, itemCount: snap.lines.length, proposal: { action: "set_payment_method", order_id: snap.orderId, payment_method: "online", payment_link_sent: true, payment_reference: pay.reference } };
+            } else {
+              console.warn("[ai/auto-reply] payment link init failed", { orderId: snap.orderId, error: pay.error });
+              bodyText = composeOrderConfirmedPayElsewhere(snap);
+              actionDecision = { kind: "order_proposal", finalOrderId: snap.orderId, itemCount: snap.lines.length, proposal: { action: "set_payment_method", order_id: snap.orderId, payment_method: "online", payment_link_sent: false } };
+            }
+          } else if (method === "on_delivery") {
+            bodyText = composeOrderConfirmedOnDelivery(snap);
+            actionDecision = { kind: "order_proposal", finalOrderId: snap.orderId, itemCount: snap.lines.length, proposal: { action: "set_payment_method", order_id: snap.orderId, payment_method: "on_delivery" } };
+          } else {
+            bodyText = "Your order is reserved for pickup:\n" + orderLines(snap) + "\n" + composeTotalsBlock(snap) +
+              "\nPay at the store when you collect.";
+            actionDecision = { kind: "order_proposal", finalOrderId: snap.orderId, itemCount: snap.lines.length, proposal: { action: "set_payment_method", order_id: snap.orderId, payment_method: "at_store" } };
+          }
+        }
       } else if (oa.kind === "decline") {
         bodyText = composeOrderDeclined();
         actionDecision = { kind: "order_proposal", finalOrderId: current.orderId, itemCount: current.lines.length, proposal: { action: "decline_order", order_id: current.orderId, subtotal_kobo: current.subtotalKobo } };
