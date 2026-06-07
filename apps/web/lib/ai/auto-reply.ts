@@ -28,6 +28,19 @@ import {
   type EditOrderResult,
 } from "@/lib/ai/actions/order-actions";
 
+// Low-confidence fallback lines. When the model is not confident, we send one of
+// these at random (instead of going silent) to invite the customer to restate.
+// Varied wording so repeated low-confidence turns do not read like a stuck bot.
+const CLARIFIERS: readonly [string, string, string] = [
+  "Sorry, I did not quite catch that. Could you say it another way, or tell me what you would like to order or ask about?",
+  "I want to make sure I get this right. Could you share a little more detail about what you need?",
+  "I am not sure I understood that fully. Could you rephrase it for me?",
+];
+
+function pickClarifier(): string {
+  return CLARIFIERS[Math.floor(Math.random() * CLARIFIERS.length)] ?? CLARIFIERS[0];
+}
+
 /**
  * Autonomous reply loop. Called from the WhatsApp webhook after a FRESH inbound
  * customer message is persisted. Never throws -- any failure is logged and
@@ -35,7 +48,8 @@ import {
  *
  * Guardrails:
  *  - Only acts when ai_mode = 'autonomous' (off/assisted/semi never auto-send).
- *  - Only sends high-confidence replies; low-confidence is left for the vendor.
+ *  - High-confidence replies are sent in full; low-confidence sends a short
+ *    clarifier asking the customer to restate (never a money action).
  *  - Bookings (service/hybrid): create/edit/cancel against the customer's next
  *    upcoming booking. Orders (product/hybrid): create/add/remove/set-qty/cancel
  *    against the customer's one open pending order. Both compose the reply from
@@ -286,7 +300,40 @@ export async function maybeAutoReply(args: {
   };
 
   if (!act) {
-    await logDecision("pending");
+    // Low confidence: instead of going silent, send a short clarifier asking the
+    // customer to restate. No action is executed and no money decision is made on
+    // a low-confidence turn, so this is a safe nudge, not an answer.
+    const clarifier = pickClarifier();
+    const clarifierSend = await sendWhatsAppText({
+      phoneNumberId: channel.meta_phone_number_id,
+      accessToken: channel.access_token,
+      toE164,
+      body: clarifier,
+    });
+    if (!clarifierSend.ok) {
+      console.error("[ai/auto-reply] clarifier send failed", clarifierSend.error);
+      await logDecision("pending");
+      return;
+    }
+    const clarifierAt = new Date().toISOString();
+    await admin.from("messages").insert({
+      conversation_id: conversationId,
+      direction: "out",
+      sender_role: "ai",
+      body_text: clarifier,
+      sent_at: clarifierAt,
+      meta_message_id: clarifierSend.wamid,
+      meta_status: "sent",
+    });
+    await admin
+      .from("conversations")
+      .update({
+        last_message_at: clarifierAt,
+        last_message_preview: clarifier.slice(0, 80),
+        last_message_direction: "out",
+      })
+      .eq("id", conversationId);
+    await logDecision("auto_sent", { proposal: { fallback: "clarifier", reply: clarifier, confidence: result.confidence } });
     return;
   }
 
