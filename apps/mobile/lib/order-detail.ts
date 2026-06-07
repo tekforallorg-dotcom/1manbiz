@@ -103,3 +103,39 @@ export async function markOrderPaid(orderId: string): Promise<{ ok: boolean; err
   }
   return { ok: true };
 }
+
+// Cancel an order. On a paid -> cancelled transition the DB trigger restores
+// stock and reverses the customer rollup (migration 0024). Routed through the
+// server (mobile twin of the web cancel) so ownership is verified server-side.
+// Does not refund money; refunds are handled by the vendor out-of-band.
+export async function cancelOrder(orderId: string): Promise<{ ok: boolean; error?: string }> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) return { ok: false, error: "You are not signed in." };
+
+  let res: Response;
+  try {
+    res = await fetch(API_BASE_URL + "/api/orders/cancel", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token,
+      },
+      body: JSON.stringify({ orderId }),
+    });
+  } catch {
+    return { ok: false, error: "Network error. Check your connection and try again." };
+  }
+
+  let json: { ok?: boolean; error?: string };
+  try {
+    json = (await res.json()) as typeof json;
+  } catch {
+    return { ok: false, error: "Unexpected response from the server." };
+  }
+
+  if (!res.ok || !json.ok) {
+    return { ok: false, error: json.error ?? "Could not cancel the order." };
+  }
+  return { ok: true };
+}

@@ -8,6 +8,7 @@ import { ExternalLink, Share2 } from "lucide-react-native";
 import {
   fetchOrderDetail,
   markOrderPaid,
+  cancelOrder,
   type OrderDetail,
 } from "../../../lib/order-detail";
 import { formatNaira, nairaParts, formatDateTime } from "../../../lib/format";
@@ -34,6 +35,8 @@ export default function OrderDetailScreen() {
   const [notFound, setNotFound] = useState(false);
   const [marking, setMarking] = useState(false);
   const [confirmingPaid, setConfirmingPaid] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -74,6 +77,22 @@ export default function OrderDetailScreen() {
     if (refreshed) setOrder(refreshed);
     setMarking(false);
     setConfirmingPaid(false);
+  };
+
+  const doCancel = async () => {
+    if (!order) return;
+    setCancelling(true);
+    const result = await cancelOrder(order.id);
+    if (!result.ok) {
+      setCancelling(false);
+      setConfirmingCancel(false);
+      Alert.alert("Could not cancel order", result.error ?? "Please try again.");
+      return;
+    }
+    const refreshed = await fetchOrderDetail(order.id);
+    if (refreshed) setOrder(refreshed);
+    setCancelling(false);
+    setConfirmingCancel(false);
   };
 
   const handleViewReceipt = () => {
@@ -240,6 +259,17 @@ export default function OrderDetailScreen() {
               <Text className="text-text text-base font-semibold mr-2">View receipt</Text>
               <ExternalLink size={18} color={designColors.text} />
             </Pressable>
+            <Pressable
+              onPress={() => setConfirmingCancel(true)}
+              disabled={cancelling}
+              className="bg-white border border-red-200 rounded-2xl py-4 items-center active:opacity-60 flex-row justify-center"
+            >
+              {cancelling ? (
+                <ActivityIndicator color="#DC2626" />
+              ) : (
+                <Text className="text-red-600 text-base font-semibold">Cancel order</Text>
+              )}
+            </Pressable>
           </View>
         ) : null}
       </View>
@@ -256,6 +286,17 @@ export default function OrderDetailScreen() {
         pending={marking}
         onConfirm={doMarkPaid}
         onCancel={() => setConfirmingPaid(false)}
+      />
+
+      <ConfirmSheet
+        visible={confirmingCancel}
+        title="Cancel this paid order?"
+        body="This returns the items to stock and reverses the sale. It does not refund the customer; send any refund separately."
+        confirmLabel="Cancel order"
+        destructive
+        pending={cancelling}
+        onConfirm={doCancel}
+        onCancel={() => setConfirmingCancel(false)}
       />
     </SafeAreaView>
   );

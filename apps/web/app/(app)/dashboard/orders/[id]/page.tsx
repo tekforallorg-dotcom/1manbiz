@@ -7,6 +7,7 @@ import { formatNairaFromKobo } from "@/lib/format";
 import { buildWhatsAppLink } from "@/lib/whatsapp";
 
 import { OrderActionsBar } from "./order-actions-bar";
+import { CancelPaidOrder } from "./cancel-paid-order";
 import { ReceiptShare } from "./receipt-share";
 
 export const dynamic = "force-dynamic";
@@ -166,6 +167,10 @@ export default async function OrderDetailPage(props: { params: Promise<{ id: str
           customerPhone={customerPhone}
           businessName={business.name}
         />
+      ) : null}
+
+      {status === "paid" ? (
+        <CancelPaidOrder orderId={order.id} />
       ) : null}
 
       {status === "cancelled" && order.cancelled_at ? (

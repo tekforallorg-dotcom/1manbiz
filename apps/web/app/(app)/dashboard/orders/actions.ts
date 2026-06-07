@@ -176,9 +176,6 @@ async function transitionOrderStatus(orderId: string, nextStatus: "paid" | "canc
   if (!order) return { ok: false, error: "Order not found" };
 
   if (order.status === nextStatus) return { ok: true };
-  if (order.status === "paid" && nextStatus === "cancelled") {
-    return { ok: false, error: "Cannot cancel a paid order. Refunds will be available in a later release." };
-  }
   if (order.status === "cancelled" && nextStatus === "paid") {
     return { ok: false, error: "Cannot mark a cancelled order as paid." };
   }
