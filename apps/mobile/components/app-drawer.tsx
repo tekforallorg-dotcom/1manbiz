@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePathname, useRouter, type Href } from "expo-router";
@@ -14,13 +13,12 @@ import { colors } from "@1manbiz/design";
 
 import { NAV_ITEMS } from "./nav-items";
 
-const MENU_WIDTH = 264;
+const MENU_WIDTH = 244;
 
 export function AppDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
 
   // RN core Animated (native driver). No Reanimated/worklets -> no native dep.
   const progress = useRef(new Animated.Value(0)).current;
@@ -33,12 +31,10 @@ export function AppDrawer({ open, onClose }: { open: boolean; onClose: () => voi
     }).start();
   }, [open, progress]);
 
-  // Floating popover: fade + small rise + subtle scale, centered above the bar.
+  // Floating popover: fade + small rise + subtle scale, anchored to the bottom right.
   const translateY = progress.interpolate({ inputRange: [0, 1], outputRange: [16, 0] });
   const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] });
   const backdropOpacity = progress.interpolate({ inputRange: [0, 1], outputRange: [0, 0.18] });
-
-  const left = Math.max((width - MENU_WIDTH) / 2, 16);
 
   const go = (route: string) => {
     onClose();
@@ -62,7 +58,7 @@ export function AppDrawer({ open, onClose }: { open: boolean; onClose: () => voi
         style={[
           styles.card,
           {
-            left,
+            right: 16,
             bottom: insets.bottom + 72,
             opacity: progress,
             transform: [{ translateY }, { scale }],

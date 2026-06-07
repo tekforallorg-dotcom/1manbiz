@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, ScrollView, RefreshControl, Pressable, Animated } from "react-native";
+import { View, Text, ScrollView, RefreshControl, Pressable, Animated, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
@@ -17,6 +17,7 @@ import { firstNameFrom } from "../../../lib/profile";
 import { getActiveBusinessId } from "../../../lib/business";
 import { fetchDashboardSummary, type DashboardSummary } from "../../../lib/dashboard";
 import { nairaParts } from "../../../lib/format";
+import { getBusinessLogoUrl } from "../../../lib/image";
 import { Wordmark } from "../../../components/wordmark";
 import { OrderRow } from "../../../components/order-row";
 
@@ -85,6 +86,7 @@ export default function HomeScreen() {
   const userEmail = session?.user?.email;
 
   const [firstName, setFirstName] = useState<string | null>(null);
+  const [store, setStore] = useState<{ name: string; logoUrl: string | null } | null>(null);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -100,13 +102,19 @@ export default function HomeScreen() {
     ]);
     setFirstName(firstNameFrom({ full_name: profileRes.data?.full_name, email: userEmail }));
     if (!businessId) {
+      setStore(null);
       setSummary({
         tiles: { revenueTodayKobo: 0, ordersTodayCount: 0, pendingCount: 0, activeProductsCount: 0 },
         recentOrders: [],
       });
       return;
     }
-    const data = await fetchDashboardSummary(businessId);
+    const [bizRes, data] = await Promise.all([
+      supabase.from("businesses").select("name, logo_path").eq("id", businessId).maybeSingle(),
+      fetchDashboardSummary(businessId),
+    ]);
+    const biz = bizRes.data as { name?: string; logo_path?: string | null } | null;
+    setStore(biz ? { name: biz.name ?? "", logoUrl: getBusinessLogoUrl(biz.logo_path ?? null) } : null);
     setSummary(data);
   }, [userId, userEmail]);
 
@@ -140,7 +148,7 @@ export default function HomeScreen() {
   const pending = t?.pendingCount ?? 0;
   const now = new Date();
   const dateLabel = `${DAYS[now.getDay()] ?? ""}, ${now.getDate()} ${MONTHS[now.getMonth()] ?? ""}`;
-  const initial = (firstName?.trim()[0] ?? "?").toUpperCase();
+  const storeInitial = (store?.name?.trim()[0] ?? "?").toUpperCase();
   const ctaPending = !!t && pending > 0;
   const ctaLabel = ctaPending
     ? (pending === 1 ? "Review 1 pending order" : `Review ${pending} pending orders`)
@@ -156,10 +164,21 @@ export default function HomeScreen() {
           <Wordmark />
           <Pressable
             onPress={() => router.push("/settings")}
-            className="w-10 h-10 rounded-full bg-surface-muted items-center justify-center active:opacity-80"
+            className="flex-row items-center active:opacity-80"
             hitSlop={6}
           >
-            <Text className="text-text text-base font-semibold">{initial}</Text>
+            {store?.logoUrl ? (
+              <Image source={{ uri: store.logoUrl }} className="w-9 h-9 rounded-full" resizeMode="cover" />
+            ) : (
+              <View className="w-9 h-9 rounded-full bg-surface-muted items-center justify-center">
+                <Text className="text-text text-sm font-bold">{storeInitial}</Text>
+              </View>
+            )}
+            {store?.name ? (
+              <Text className="text-text text-sm font-semibold ml-2" numberOfLines={1} style={{ maxWidth: 120 }}>
+                {store.name}
+              </Text>
+            ) : null}
           </Pressable>
         </View>
 
