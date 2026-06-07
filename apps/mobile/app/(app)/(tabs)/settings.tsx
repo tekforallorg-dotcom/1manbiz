@@ -30,6 +30,13 @@ const TONE_OPTIONS: { value: AiTone; label: string }[] = [
   { value: "playful", label: "Playful" },
 ];
 
+type FulfillmentMode = "delivery" | "pickup" | "both";
+const FULFILLMENT_OPTIONS: { value: FulfillmentMode; label: string }[] = [
+  { value: "delivery", label: "Delivery" },
+  { value: "pickup", label: "Pickup" },
+  { value: "both", label: "Both" },
+];
+
 type BizRow = {
   name: string;
   tagline: string | null;
@@ -39,6 +46,8 @@ type BizRow = {
   ai_language: string;
   catalogue_active: boolean;
   ai_sends_payment_link: boolean;
+  address: string | null;
+  fulfillment_mode: FulfillmentMode;
 };
 
 export default function SettingsScreen() {
@@ -57,6 +66,9 @@ export default function SettingsScreen() {
   const [language, setLanguage] = useState("");
   const [catalogueActive, setCatalogueActive] = useState(true);
   const [autopay, setAutopay] = useState(false);
+  const [fulfillment, setFulfillment] = useState<FulfillmentMode>("both");
+  const [address, setAddress] = useState("");
+  const pickupEnabled = fulfillment === "pickup" || fulfillment === "both";
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -65,7 +77,7 @@ export default function SettingsScreen() {
     setBusinessId(id);
     const { data } = await supabase
       .from("businesses")
-      .select("name, tagline, whatsapp_number, ai_mode, ai_tone, ai_language, catalogue_active, ai_sends_payment_link")
+      .select("name, tagline, whatsapp_number, ai_mode, ai_tone, ai_language, catalogue_active, ai_sends_payment_link, address, fulfillment_mode")
       .eq("id", id)
       .maybeSingle();
     if (data) {
@@ -78,6 +90,8 @@ export default function SettingsScreen() {
       setLanguage(b.ai_language ?? "");
       setCatalogueActive(b.catalogue_active);
       setAutopay(b.ai_sends_payment_link ?? false);
+      setFulfillment(b.fulfillment_mode ?? "both");
+      setAddress(b.address ?? "");
     }
   }, [userId]);
 
@@ -99,6 +113,14 @@ export default function SettingsScreen() {
       Alert.alert("Settings", "Business name cannot be empty.");
       return;
     }
+    const trimmedAddress = address.trim();
+    if ((fulfillment === "pickup" || fulfillment === "both") && !trimmedAddress) {
+      Alert.alert(
+        "Settings",
+        "Add your store address so pickup customers know where to come.",
+      );
+      return;
+    }
     setSaving(true);
     const { error } = await supabase
       .from("businesses")
@@ -110,6 +132,8 @@ export default function SettingsScreen() {
         ai_language: language.trim() || "English",
         catalogue_active: catalogueActive,
         ai_sends_payment_link: autopay,
+        fulfillment_mode: fulfillment,
+        address: trimmedAddress || null,
       })
       .eq("id", businessId);
     setSaving(false);
@@ -229,6 +253,35 @@ export default function SettingsScreen() {
             <Text className="text-text text-base">{whatsapp || "Not connected"}</Text>
             <Text className="text-textMuted text-xs mt-1">Manage your WhatsApp connection on the web dashboard.</Text>
           </View>
+
+          <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">Fulfillment</Text>
+          <Text className="text-textMuted text-sm mt-1">How customers receive their orders.</Text>
+          <View className="flex-row mt-2 bg-gray-100 rounded-2xl p-1">
+            {FULFILLMENT_OPTIONS.map((opt) => {
+              const active = fulfillment === opt.value;
+              return (
+                <Pressable
+                  key={opt.value}
+                  onPress={() => setFulfillment(opt.value)}
+                  className={"flex-1 py-2.5 rounded-xl items-center active:opacity-80 " + (active ? "bg-primary" : "")}
+                >
+                  <Text className={"text-sm font-medium " + (active ? "text-white" : "text-textMuted")}>{opt.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">
+            Store address {pickupEnabled ? "(required for pickup)" : "(optional)"}
+          </Text>
+          <TextInput
+            value={address}
+            onChangeText={setAddress}
+            placeholder="e.g. 12 Admiralty Way, Lekki Phase 1, Lagos"
+            placeholderTextColor="#9CA3AF"
+            multiline
+            className="mt-2 bg-white border border-gray-200 rounded-2xl px-4 py-3 text-text text-base"
+          />
 
           <View className="mt-6 bg-white border border-gray-200 rounded-2xl px-4 py-3 flex-row items-center justify-between">
             <View className="flex-1 mr-3">
