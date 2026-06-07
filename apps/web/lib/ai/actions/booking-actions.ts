@@ -60,6 +60,7 @@ export interface CreatePendingBookingArgs {
   customerId: string;
   title: string;
   startsAtWatLocal: string;
+  orderId?: string;
 }
 
 export type CreatePendingBookingResult =
@@ -81,6 +82,7 @@ export async function createPendingBooking(
       title,
       starts_at: parsed.iso,
       status: "pending",
+      ...(args.orderId ? { order_id: args.orderId } : {}),
     })
     .select("id")
     .single();

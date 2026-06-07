@@ -28,6 +28,7 @@ import {
   setFulfillment,
   setDeliveryArea,
   setPaymentMethod,
+  setPickupAt,
   type OrderSnapshot,
   type EditOrderResult,
 } from "@/lib/ai/actions/order-actions";
@@ -135,6 +136,10 @@ function composePickupHolding(storeAddress: string): string {
     : "Great, you can pick up from our store.";
   return intro + " The shop will arrange your pickup time with you shortly.";
 }
+function composePickupTimeQuestion(storeAddress: string): string {
+  const at = storeAddress ? " from our store at " + storeAddress : " from our store";
+  return "Great. What day and time would you like to pick up" + at + "?";
+}
 function composeOrderConfirmedWithLink(snap: OrderSnapshot, url: string): string {
   return "Your order is confirmed:\n" + orderLines(snap) + "\n" + composeTotalsBlock(snap) +
     "\n\nPay securely here:\n" + url +
@@ -185,6 +190,8 @@ export async function maybeAutoReply(args: {
   const aiSendsPaymentLink = business.ai_sends_payment_link === true;
   const fulfillmentMode = (business.fulfillment_mode as string | null) ?? "both";
   const storeAddress = ((business.address as string | null) ?? "").trim();
+  const pickupNextLine = () =>
+    offersBookings ? composePickupTimeQuestion(storeAddress) : composePickupHolding(storeAddress);
 
   // Channel must be connected with usable per-tenant credentials.
   const { data: channel } = await admin
@@ -205,7 +212,7 @@ export async function maybeAutoReply(args: {
     confirmed: boolean;
     fulfillmentType: "delivery" | "pickup" | null;
     deliveryLabel: string | null;
-    awaiting: "items" | "fulfillment" | "delivery_area" | "payment_method" | "complete";
+    awaiting: "items" | "fulfillment" | "delivery_area" | "payment_method" | "pickup_time" | "complete";
   } | null = null;
   if (offersBookings || offersOrders) {
     const { data: convo } = await admin
@@ -221,11 +228,15 @@ export async function maybeAutoReply(args: {
     if (customerId && offersOrders) {
       const co = await loadCurrentOrder(admin, businessId, customerId);
       if (co && co.lines.length > 0) {
-        let awaiting: "items" | "fulfillment" | "delivery_area" | "payment_method" | "complete" = "items";
+        let awaiting: "items" | "fulfillment" | "delivery_area" | "payment_method" | "pickup_time" | "complete" = "items";
         if (aiSendsPaymentLink && co.confirmedAt) {
           if (!co.fulfillmentType) awaiting = "fulfillment";
-          else if (co.fulfillmentType === "pickup") awaiting = "complete"; // pickup parked in 2a; booking + payment in 2b
-          else if (co.fulfillmentType === "delivery" && !co.deliveryZoneId) awaiting = "delivery_area";
+          else if (co.fulfillmentType === "pickup") {
+            if (!offersBookings) awaiting = "complete";
+            else if (!co.pickupAt) awaiting = "pickup_time";
+            else if (!co.paymentMethod) awaiting = "payment_method";
+            else awaiting = "complete";
+          } else if (co.fulfillmentType === "delivery" && !co.deliveryZoneId) awaiting = "delivery_area";
           else if (!co.paymentMethod) awaiting = "payment_method";
           else awaiting = "complete";
         }
@@ -512,8 +523,8 @@ export async function maybeAutoReply(args: {
         } else if (fulfillmentMode === "pickup") {
           await markConfirmed(admin, current.orderId);
           const snap = await setFulfillment(admin, current.orderId, "pickup");
-          bodyText = composeConfirmedHeader(snap) + "\n\n" + composePickupHolding(storeAddress);
-          actionDecision = { kind: "order_proposal", finalOrderId: snap.orderId, itemCount: snap.lines.length, proposal: { action: "confirm_order", order_id: snap.orderId, subtotal_kobo: snap.subtotalKobo, fulfillment_type: "pickup", awaiting: "complete" } };
+          bodyText = composeConfirmedHeader(snap) + "\n\n" + pickupNextLine();
+          actionDecision = { kind: "order_proposal", finalOrderId: snap.orderId, itemCount: snap.lines.length, proposal: { action: "confirm_order", order_id: snap.orderId, subtotal_kobo: snap.subtotalKobo, fulfillment_type: "pickup", awaiting: offersBookings ? "pickup_time" : "complete" } };
         } else {
           const snap = await markConfirmed(admin, current.orderId);
           bodyText = composeFulfillmentQuestion(snap);
@@ -523,14 +534,44 @@ export async function maybeAutoReply(args: {
         if (!current.confirmedAt) {
           bodyText = composeOrderSummary(current);
         } else {
-          const type = oa.fulfillment === "pickup" ? "pickup" : "delivery";
-          const snap = await setFulfillment(admin, current.orderId, type);
-          if (type === "delivery") {
-            bodyText = "Sure. Which area should we deliver to?";
+          const wanted = oa.fulfillment === "pickup" ? "pickup" : "delivery";
+          if (wanted === "pickup" && fulfillmentMode === "delivery") {
+            bodyText = "We do not offer pickup at the moment, only delivery. Which area should we deliver to?";
+          } else if (wanted === "delivery" && fulfillmentMode === "pickup") {
+            bodyText = "We do not offer delivery at the moment, only pickup. " + pickupNextLine();
           } else {
-            bodyText = composePickupHolding(storeAddress);
+            const snap = await setFulfillment(admin, current.orderId, wanted);
+            if (wanted === "delivery") {
+              bodyText = "Sure. Which area should we deliver to?";
+            } else {
+              bodyText = pickupNextLine();
+            }
+            actionDecision = { kind: "order_proposal", finalOrderId: snap.orderId, itemCount: snap.lines.length, proposal: { action: "set_fulfillment", order_id: snap.orderId, fulfillment_type: wanted } };
           }
-          actionDecision = { kind: "order_proposal", finalOrderId: snap.orderId, itemCount: snap.lines.length, proposal: { action: "set_fulfillment", order_id: snap.orderId, fulfillment_type: type } };
+        }
+      } else if (oa.kind === "set_pickup_time") {
+        if (!current.confirmedAt || current.fulfillmentType !== "pickup") {
+          bodyText = composeOrderSummary(current);
+        } else if (!customerId) {
+          bodyText = composePickupTimeQuestion(storeAddress);
+        } else {
+          const booking = await createPendingBooking({
+            admin,
+            businessId,
+            customerId,
+            title: "Pickup - " + lineText(current),
+            startsAtWatLocal: oa.pickup_at ?? "",
+            orderId: current.orderId,
+          });
+          if (!booking.ok) {
+            bodyText = "I could not read that time. What day and time would you like to pick up?";
+          } else {
+            const snap = await setPickupAt(admin, current.orderId, booking.startsAtIso);
+            bodyText = "Your pickup is booked for " + whenLabelAt(booking.startsAtIso) + " (WAT)" +
+              (storeAddress ? " at " + storeAddress : "") + ".\n" + orderLines(snap) + "\n" + composeTotalsBlock(snap) +
+              "\n\nWould you like to pay online now, or pay at the store when you collect?";
+            actionDecision = { kind: "order_proposal", finalOrderId: snap.orderId, itemCount: snap.lines.length, proposal: { action: "set_pickup_time", order_id: snap.orderId, pickup_at: booking.startsAtIso, booking_id: booking.bookingId } };
+          }
         }
       } else if (oa.kind === "set_delivery_area") {
         if (!current.confirmedAt) {

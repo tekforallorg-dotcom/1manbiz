@@ -39,6 +39,7 @@ export interface OrderSnapshot {
   deliveryAddress: string | null;
   deliveryFeeKobo: number;
   paymentMethod: PaymentMethod | null;
+  pickupAt: string | null;
 }
 
 export interface OrderItemInput {
@@ -106,7 +107,7 @@ async function readSnapshot(admin: AdminClient, orderId: string): Promise<OrderS
 
   const { data: orderRow } = await admin
     .from("orders")
-    .select("confirmed_at, fulfillment_type, delivery_zone_id, delivery_address, delivery_fee_kobo, payment_method")
+    .select("confirmed_at, fulfillment_type, delivery_zone_id, delivery_address, delivery_fee_kobo, payment_method, pickup_at")
     .eq("id", orderId)
     .maybeSingle();
   const o = (orderRow ?? {}) as Record<string, unknown>;
@@ -121,6 +122,7 @@ async function readSnapshot(admin: AdminClient, orderId: string): Promise<OrderS
     deliveryAddress: (o.delivery_address as string | null) ?? null,
     deliveryFeeKobo: Number(o.delivery_fee_kobo ?? 0),
     paymentMethod: (o.payment_method as PaymentMethod | null) ?? null,
+    pickupAt: (o.pickup_at as string | null) ?? null,
   };
 }
 
@@ -469,5 +471,16 @@ export async function setPaymentMethod(
   method: PaymentMethod,
 ): Promise<OrderSnapshot> {
   await admin.from("orders").update({ payment_method: method }).eq("id", orderId);
+  return readSnapshot(admin, orderId);
+}
+
+// Record the scheduled pickup time on the order. The linked booking row (created
+// by the caller) is the calendar entry; pickup_at is the order-flow marker.
+export async function setPickupAt(
+  admin: AdminClient,
+  orderId: string,
+  iso: string,
+): Promise<OrderSnapshot> {
+  await admin.from("orders").update({ pickup_at: iso }).eq("id", orderId);
   return readSnapshot(admin, orderId);
 }

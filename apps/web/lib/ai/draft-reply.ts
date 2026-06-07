@@ -54,11 +54,12 @@ export interface OrderAction {
   kind:
     | "create" | "add_item" | "remove_item" | "set_quantity" | "replace_item"
     | "cancel" | "confirm" | "decline"
-    | "set_fulfillment" | "set_delivery_area" | "set_payment_method";
+    | "set_fulfillment" | "set_delivery_area" | "set_payment_method" | "set_pickup_time";
   items: OrderActionItem[];
   fulfillment?: "delivery" | "pickup";
   area?: string;
   payment_method?: "online" | "on_delivery" | "at_store";
+  pickup_at?: string;
 }
 
 export type DraftReplyResult =
@@ -113,7 +114,7 @@ export async function draftReply(args: {
     confirmed?: boolean;
     fulfillmentType?: "delivery" | "pickup" | null;
     deliveryLabel?: string | null;
-    awaiting?: "items" | "fulfillment" | "delivery_area" | "payment_method" | "complete";
+    awaiting?: "items" | "fulfillment" | "delivery_area" | "payment_method" | "pickup_time" | "complete";
   } | null;
   aiSendsPaymentLink?: boolean;
   recentPaidOrders?: string | null;
@@ -192,6 +193,9 @@ export async function draftReply(args: {
       ? "- fulfillment, ONLY after the order is confirmed (the CURRENT ORDER line states what is AWAITING). Do not ask or restate these questions; the shop sends the exact wording. Classify the customer's latest answer:\n" +
         "    Choosing or switching delivery vs pickup: action 'set_fulfillment', fulfillment = 'delivery' or 'pickup'.\n" +
         "    Giving the delivery area (when awaiting delivery area): action 'set_delivery_area', area = the matching DELIVERY zone label EXACTLY if it clearly matches one, else area = exactly what the customer said. Never set a fee; the shop resolves it from the zone.\n" +
+        (offersBookings
+          ? "    Giving the pickup day and time (when awaiting pickup time): action 'set_pickup_time', pickup_at = that moment as YYYY-MM-DDTHH:MM in 24h WAT resolved against CURRENT TIME below. If the day or time is vague, action 'none' and ask for a specific day and time. Never invent a time the customer did not give.\n"
+          : "") +
         "    Choosing how to pay (when awaiting payment method): action 'set_payment_method', payment_method = 'online' (pay online, card, transfer, pay now), 'on_delivery' (pay on delivery, POD) for delivery, or 'at_store' (pay at the store) for pickup.\n"
       : "";
 
@@ -209,10 +213,12 @@ export async function draftReply(args: {
     ? '"booking":{"action":"none|create|edit|cancel|confirm|decline","starts_at":"YYYY-MM-DDTHH:MM","title":"<short label>"},'
     : "";
   const orderActionEnum = aiSendsPaymentLink
-    ? "none|create|add_item|remove_item|set_quantity|replace_item|cancel|confirm|decline|set_fulfillment|set_delivery_area|set_payment_method"
+    ? "none|create|add_item|remove_item|set_quantity|replace_item|cancel|confirm|decline|set_fulfillment|set_delivery_area|set_payment_method" +
+      (offersBookings ? "|set_pickup_time" : "")
     : "none|create|add_item|remove_item|set_quantity|replace_item|cancel|confirm|decline";
   const orderFulfillmentFields = aiSendsPaymentLink
-    ? ',"fulfillment":"delivery|pickup","area":"<delivery area>","payment_method":"online|on_delivery|at_store"'
+    ? ',"fulfillment":"delivery|pickup","area":"<delivery area>","payment_method":"online|on_delivery|at_store"' +
+      (offersBookings ? ',"pickup_at":"YYYY-MM-DDTHH:MM"' : "")
     : "";
   const orderField = offersOrders
     ? '"order":{"action":"' + orderActionEnum + '","items":[{"name":"<exact catalog product name>","qty":<integer>}]' + orderFulfillmentFields + '},'
@@ -248,7 +254,7 @@ export async function draftReply(args: {
     fulfillmentRule +
     bookingRule +
     "- If source is 'none' because it is a complaint, haggling, a payment claim, or a custom request, or KNOWLEDGE does not cover a policy question: reply 'Let me check with the shop and get back to you shortly' and set confidence 'low'.\n\n" +
-    "confidence: send-readiness of this reply. Set 'high' for any reply that is safe to send now: a grounded answer from the named block, a greeting, any order create/add/remove/quantity/cancel/confirm/set fulfillment/set delivery area/set payment method or order question, or any booking create/edit/cancel/confirm or a booking clarifying question. Set 'low' ONLY when the reply is the 'let me check with the shop' holding reply (complaint, haggling, payment claim, or a policy KNOWLEDGE does not cover); those wait for the vendor.\n" +
+    "confidence: send-readiness of this reply. Set 'high' for any reply that is safe to send now: a grounded answer from the named block, a greeting, any order create/add/remove/quantity/cancel/confirm/set fulfillment/set delivery area/set pickup time/set payment method or order question, or any booking create/edit/cancel/confirm or a booking clarifying question. Set 'low' ONLY when the reply is the 'let me check with the shop' holding reply (complaint, haggling, payment claim, or a policy KNOWLEDGE does not cover); those wait for the vendor.\n" +
     "Tone: warm, brief, human, like a real shop attendant on WhatsApp. No 'Thank you for your inquiry'. No emojis unless the customer used one. " +
     "Language: '" + language + "'. Style: '" + tone + "'.\n\n" +
     "Respond with ONLY this JSON, no markdown fences, no prose:\n" +
@@ -270,6 +276,7 @@ export async function draftReply(args: {
     const a = currentOrder.awaiting ?? "items";
     if (a === "fulfillment") return " Items are confirmed. The shop just asked DELIVERY or PICKUP; classify the customer's answer with set_fulfillment.";
     if (a === "delivery_area") return " Items confirmed, delivery chosen. The shop just asked which AREA to deliver to; classify the answer with set_delivery_area.";
+    if (a === "pickup_time") return " Items confirmed, pickup chosen. The shop just asked for the pickup DAY and TIME; classify the answer with set_pickup_time.";
     if (a === "payment_method") return " Items confirmed" + (currentOrder.fulfillmentType ? ", " + currentOrder.fulfillmentType : "") + (currentOrder.deliveryLabel ? " to " + currentOrder.deliveryLabel : "") + ". The shop just asked HOW the customer wants to pay; classify the answer with set_payment_method.";
     if (a === "complete") return " This order is fully set; do not ask again.";
     return " Add to, change, or cancel THIS order; do not start a second one.";
@@ -410,6 +417,9 @@ export async function draftReply(args: {
       } else if (action === "set_delivery_area") {
         const area = typeof oo.area === "string" ? oo.area.trim() : "";
         if (area) orderAction = { kind: "set_delivery_area", items: [], area };
+      } else if (action === "set_pickup_time") {
+        const pickupAt = typeof oo.pickup_at === "string" ? oo.pickup_at.trim() : "";
+        if (pickupAt) orderAction = { kind: "set_pickup_time", items: [], pickup_at: pickupAt };
       } else if (action === "set_payment_method") {
         const pm = oo.payment_method;
         const method = pm === "online" || pm === "on_delivery" || pm === "at_store" ? pm : null;
