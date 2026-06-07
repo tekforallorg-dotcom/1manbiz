@@ -17,7 +17,7 @@ export default async function SettingsPage() {
   const { data: business } = await supabase
     .from("businesses")
     .select(
-      "id, name, slug, tagline, whatsapp_number, logo_path, catalogue_active",
+      "id, name, slug, tagline, whatsapp_number, logo_path, catalogue_active, address, fulfillment_mode",
     )
     .eq("owner_id", user.id)
     .maybeSingle();

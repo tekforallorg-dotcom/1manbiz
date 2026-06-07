@@ -51,6 +51,12 @@ export async function updateBusinessSettingsAction(
   const logoPath = logoPathRaw.length > 0 ? logoPathRaw : null;
   const catalogueActive = formData.get("catalogue_active") === "on";
 
+  const fulfillmentRaw = String(formData.get("fulfillment_mode") ?? "both");
+  const fulfillmentMode = ["delivery", "pickup", "both"].includes(fulfillmentRaw)
+    ? fulfillmentRaw
+    : "both";
+  const address = String(formData.get("address") ?? "").trim() || null;
+
   const fieldErrors: Record<string, string> = {};
 
   if (!name) fieldErrors.name = "Business name is required";
@@ -65,6 +71,11 @@ export async function updateBusinessSettingsAction(
     if (!whatsappNormalized || whatsappNormalized.length < 10) {
       fieldErrors.whatsapp_number = "Enter a valid phone number";
     }
+  }
+
+  if ((fulfillmentMode === "pickup" || fulfillmentMode === "both") && !address) {
+    fieldErrors.address =
+      "Add your store address so pickup customers know where to come.";
   }
 
   if (Object.keys(fieldErrors).length > 0) {
@@ -84,6 +95,8 @@ export async function updateBusinessSettingsAction(
       whatsapp_number: whatsappNormalized,
       logo_path: logoPath,
       catalogue_active: catalogueActive,
+      address,
+      fulfillment_mode: fulfillmentMode,
     })
     .eq("id", business.id);
 

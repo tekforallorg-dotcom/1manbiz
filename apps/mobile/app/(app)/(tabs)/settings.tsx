@@ -38,6 +38,7 @@ type BizRow = {
   ai_tone: AiTone;
   ai_language: string;
   catalogue_active: boolean;
+  ai_sends_payment_link: boolean;
 };
 
 export default function SettingsScreen() {
@@ -55,6 +56,7 @@ export default function SettingsScreen() {
   const [tone, setTone] = useState<AiTone>("friendly");
   const [language, setLanguage] = useState("");
   const [catalogueActive, setCatalogueActive] = useState(true);
+  const [autopay, setAutopay] = useState(false);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -63,7 +65,7 @@ export default function SettingsScreen() {
     setBusinessId(id);
     const { data } = await supabase
       .from("businesses")
-      .select("name, tagline, whatsapp_number, ai_mode, ai_tone, ai_language, catalogue_active")
+      .select("name, tagline, whatsapp_number, ai_mode, ai_tone, ai_language, catalogue_active, ai_sends_payment_link")
       .eq("id", id)
       .maybeSingle();
     if (data) {
@@ -75,6 +77,7 @@ export default function SettingsScreen() {
       setTone(b.ai_tone);
       setLanguage(b.ai_language ?? "");
       setCatalogueActive(b.catalogue_active);
+      setAutopay(b.ai_sends_payment_link ?? false);
     }
   }, [userId]);
 
@@ -106,6 +109,7 @@ export default function SettingsScreen() {
         ai_tone: tone,
         ai_language: language.trim() || "English",
         catalogue_active: catalogueActive,
+        ai_sends_payment_link: autopay,
       })
       .eq("id", businessId);
     setSaving(false);
@@ -152,6 +156,30 @@ export default function SettingsScreen() {
             })}
           </View>
           <Text className="text-textMuted text-sm mt-2">{MODE_HELP[mode]}</Text>
+
+          <View className="mt-3 bg-white border border-gray-200 rounded-2xl px-4 py-3 flex-row items-center justify-between">
+            <View className="flex-1 mr-3">
+              <Text
+                className={
+                  "text-base font-medium " +
+                  (mode === "autonomous" ? "text-text" : "text-textMuted")
+                }
+              >
+                Send payment links
+              </Text>
+              <Text className="text-textMuted text-xs mt-0.5">
+                {mode === "autonomous"
+                  ? "BizBot sends a secure payment link when it confirms an order."
+                  : "Turn on Auto mode to let BizBot send payment links."}
+              </Text>
+            </View>
+            <Switch
+              value={autopay}
+              onValueChange={setAutopay}
+              disabled={mode !== "autonomous"}
+              trackColor={{ true: "#00D26A", false: "#D1D5DB" }}
+            />
+          </View>
 
           <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">Tone</Text>
           <View className="flex-row mt-2 bg-gray-100 rounded-2xl p-1">

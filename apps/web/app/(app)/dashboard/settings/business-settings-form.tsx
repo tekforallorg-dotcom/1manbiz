@@ -26,6 +26,8 @@ type Business = {
   whatsapp_number: string | null;
   logo_path: string | null;
   catalogue_active: boolean;
+  address: string | null;
+  fulfillment_mode: string;
 };
 
 export function BusinessSettingsForm({ business }: { business: Business }) {
@@ -39,6 +41,11 @@ export function BusinessSettingsForm({ business }: { business: Business }) {
   const [uploading, setUploading] = useState(false);
   const [slugValue, setSlugValue] = useState(business.slug);
   const [slugClientError, setSlugClientError] = useState<string | null>(null);
+  const [fulfillmentMode, setFulfillmentMode] = useState(
+    business.fulfillment_mode ?? "both",
+  );
+  const pickupEnabled =
+    fulfillmentMode === "pickup" || fulfillmentMode === "both";
 
   function onSlugChange(value: string) {
     setSlugValue(value);
@@ -184,6 +191,72 @@ export function BusinessSettingsForm({ business }: { business: Business }) {
               </p>
             )}
           </div>
+        </div>
+      </section>
+
+      {/* Fulfillment */}
+      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+        <h2 className="text-base font-medium text-foreground">Fulfillment</h2>
+        <p className="mt-1 text-xs text-text-secondary">
+          How customers receive orders. BizBot offers these when it confirms an
+          order.
+        </p>
+
+        <input type="hidden" name="fulfillment_mode" value={fulfillmentMode} />
+        <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          {(
+            [
+              { value: "delivery", label: "Delivery only" },
+              { value: "pickup", label: "Pickup only" },
+              { value: "both", label: "Both" },
+            ] as const
+          ).map((opt) => {
+            const active = fulfillmentMode === opt.value;
+            return (
+              <button
+                type="button"
+                key={opt.value}
+                onClick={() => setFulfillmentMode(opt.value)}
+                aria-pressed={active}
+                className={
+                  "rounded-xl px-4 py-3 text-sm font-medium ring-1 transition-colors " +
+                  (active
+                    ? "bg-foreground text-white ring-foreground"
+                    : "bg-white text-foreground ring-black/[0.08] hover:bg-surface-muted")
+                }
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-5">
+          <Label htmlFor="address">
+            Store address{" "}
+            <span className="font-normal text-text-muted">
+              {pickupEnabled ? "(required for pickup)" : "(optional)"}
+            </span>
+          </Label>
+          <textarea
+            id="address"
+            name="address"
+            rows={2}
+            maxLength={300}
+            defaultValue={business.address ?? ""}
+            placeholder="e.g. 12 Admiralty Way, Lekki Phase 1, Lagos"
+            className="mt-1.5 w-full rounded-xl border-0 bg-white px-3 py-3 text-sm text-foreground ring-1 ring-black/[0.06] placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+            aria-invalid={Boolean(state.fieldErrors?.address)}
+          />
+          {state.fieldErrors?.address ? (
+            <p className="mt-1.5 text-xs text-red-600">
+              {state.fieldErrors.address}
+            </p>
+          ) : (
+            <p className="mt-1.5 text-xs text-text-muted">
+              Shown to customers for pickup orders.
+            </p>
+          )}
         </div>
       </section>
 
