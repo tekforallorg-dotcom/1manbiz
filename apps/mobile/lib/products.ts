@@ -52,7 +52,7 @@ export async function fetchProduct(id: string): Promise<Product | null> {
 export interface ProductUpdate {
   name: string;
   price_kobo: number;
-  stock_quantity: number;
+  stock_quantity?: number;
   status: ProductStatus;
   image_path?: string | null;
 }
@@ -68,7 +68,9 @@ export async function updateProduct(
     .update({
       name: patch.name,
       price_kobo: patch.price_kobo,
-      stock_quantity: patch.stock_quantity,
+      ...(patch.stock_quantity !== undefined
+        ? { stock_quantity: patch.stock_quantity }
+        : {}),
       status: patch.status,
       ...(patch.image_path !== undefined ? { image_path: patch.image_path } : {}),
       updated_at: new Date().toISOString(),
