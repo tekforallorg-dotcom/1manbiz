@@ -2,6 +2,16 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { formatNairaFromKobo } from "@/lib/format";
 import type { ReplyCatalogProduct } from "@/lib/ai/draft-reply";
 
+type ProductRow = { id: string; name: string; price_kobo: number; stock_quantity: number };
+type OptionRow = { product_id: string; name: string };
+type VariantRow = {
+  product_id: string;
+  label: string;
+  price_kobo: number | null;
+  stock_quantity: number;
+};
+type RawVariant = { label: string; price_kobo: number | null; stock_quantity: number };
+
 /**
  * Builds the lean reply catalog for a business: active products with price and
  * stock, enriched with their option axes (e.g. Color, Storage) and sellable
@@ -27,12 +37,7 @@ export async function buildReplyCatalog(
     if (prodErr) console.error("[ai/catalog] products load failed", prodErr);
     return [];
   }
-  const products = prodRows as Array<{
-    id: string;
-    name: string;
-    price_kobo: number;
-    stock_quantity: number;
-  }>;
+  const products = prodRows as ProductRow[];
   if (products.length === 0) return [];
 
   const productIds = products.map((p) => p.id);
@@ -52,22 +57,14 @@ export async function buildReplyCatalog(
   ]);
 
   const optionsByProduct = new Map<string, string[]>();
-  for (const o of (optRows as Array<{ product_id: string; name: string }> | null) ?? []) {
+  for (const o of (optRows as OptionRow[] | null) ?? []) {
     const list = optionsByProduct.get(o.product_id) ?? [];
     list.push(o.name);
     optionsByProduct.set(o.product_id, list);
   }
 
-  const variantsByProduct = new Map
-    string,
-    Array<{ label: string; price_kobo: number | null; stock_quantity: number }>
-  >();
-  for (const v of (varRows as Array<{
-    product_id: string;
-    label: string;
-    price_kobo: number | null;
-    stock_quantity: number;
-  }> | null) ?? []) {
+  const variantsByProduct = new Map<string, RawVariant[]>();
+  for (const v of (varRows as VariantRow[] | null) ?? []) {
     const list = variantsByProduct.get(v.product_id) ?? [];
     list.push({ label: v.label, price_kobo: v.price_kobo, stock_quantity: v.stock_quantity });
     variantsByProduct.set(v.product_id, list);
