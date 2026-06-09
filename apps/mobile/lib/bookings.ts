@@ -21,6 +21,9 @@ export interface BookingDetail {
   customer_name: string | null;
   customer_phone: string | null;
   product_name: string | null;
+  order_id: string | null;
+  order_receipt_code: string | null;
+  order_status: string | null;
 }
 
 export interface CreateBookingInput {
@@ -78,7 +81,7 @@ export async function fetchBookingDetail(id: string): Promise<BookingDetail | nu
   const { data, error } = await supabase
     .from("bookings")
     .select(
-      "id, title, status, starts_at, ends_at, notes, customer:customers(name, phone_e164), product:products(name)",
+      "id, title, status, starts_at, ends_at, notes, order_id, customer:customers(name, phone_e164), product:products(name), order:orders(id, status, receipt_code)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -87,6 +90,7 @@ export async function fetchBookingDetail(id: string): Promise<BookingDetail | nu
   const row: any = data;
   const customer = Array.isArray(row.customer) ? row.customer[0] : row.customer;
   const product = Array.isArray(row.product) ? row.product[0] : row.product;
+  const order = Array.isArray(row.order) ? row.order[0] : row.order;
   return {
     id: row.id,
     title: row.title,
@@ -97,6 +101,9 @@ export async function fetchBookingDetail(id: string): Promise<BookingDetail | nu
     customer_name: customer?.name ?? null,
     customer_phone: customer?.phone_e164 ?? null,
     product_name: product?.name ?? null,
+    order_id: row.order_id ?? null,
+    order_receipt_code: order?.receipt_code ?? null,
+    order_status: order?.status ?? null,
   };
 }
 

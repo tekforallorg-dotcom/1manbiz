@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import {
-  View, Text, ScrollView, Pressable, TextInput, Switch, ActivityIndicator, Alert,
+  View, Text, ScrollView, Pressable, TextInput, Switch, ActivityIndicator, Alert, Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
@@ -8,6 +8,8 @@ import { useFocusEffect } from "expo-router";
 import { useSession } from "../../../lib/session";
 import { getActiveBusinessId } from "../../../lib/business";
 import { supabase } from "../../../lib/supabase";
+import { getBusinessLogoUrl } from "../../../lib/image";
+import { pickAndUploadBusinessLogo } from "../../../lib/logo-upload";
 
 type AiMode = "off" | "assisted" | "semi" | "autonomous";
 type AiTone = "friendly" | "formal" | "playful";
@@ -48,6 +50,7 @@ type BizRow = {
   ai_sends_payment_link: boolean;
   address: string | null;
   fulfillment_mode: FulfillmentMode;
+  logo_path: string | null;
 };
 
 export default function SettingsScreen() {
@@ -68,6 +71,9 @@ export default function SettingsScreen() {
   const [autopay, setAutopay] = useState(false);
   const [fulfillment, setFulfillment] = useState<FulfillmentMode>("both");
   const [address, setAddress] = useState("");
+  const [logoPath, setLogoPath] = useState<string | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const pickupEnabled = fulfillment === "pickup" || fulfillment === "both";
 
   const load = useCallback(async () => {
@@ -77,7 +83,7 @@ export default function SettingsScreen() {
     setBusinessId(id);
     const { data } = await supabase
       .from("businesses")
-      .select("name, tagline, whatsapp_number, ai_mode, ai_tone, ai_language, catalogue_active, ai_sends_payment_link, address, fulfillment_mode")
+      .select("name, tagline, whatsapp_number, ai_mode, ai_tone, ai_language, catalogue_active, ai_sends_payment_link, address, fulfillment_mode, logo_path")
       .eq("id", id)
       .maybeSingle();
     if (data) {
@@ -92,6 +98,8 @@ export default function SettingsScreen() {
       setAutopay(b.ai_sends_payment_link ?? false);
       setFulfillment(b.fulfillment_mode ?? "both");
       setAddress(b.address ?? "");
+      setLogoPath(b.logo_path ?? null);
+      setLogoPreview(null);
     }
   }, [userId]);
 
@@ -134,15 +142,31 @@ export default function SettingsScreen() {
         ai_sends_payment_link: autopay,
         fulfillment_mode: fulfillment,
         address: trimmedAddress || null,
+        logo_path: logoPath,
       })
       .eq("id", businessId);
     setSaving(false);
     Alert.alert("Settings", error ? "Could not save. Please try again." : "Saved.");
   };
 
+  const changeLogo = async () => {
+    if (!businessId) return;
+    setUploadingLogo(true);
+    const result = await pickAndUploadBusinessLogo(businessId);
+    setUploadingLogo(false);
+    if (result.status === "ok") {
+      setLogoPath(result.path);
+      setLogoPreview(result.localUri);
+    } else if (result.status === "error") {
+      Alert.alert("Logo", result.message);
+    }
+  };
+
   const signOut = () => {
     supabase.auth.signOut().catch((err) => console.error("[settings] sign out error:", err));
   };
+
+  const logoUri = logoPreview ?? getBusinessLogoUrl(logoPath);
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["top"]}>
@@ -229,6 +253,33 @@ export default function SettingsScreen() {
             placeholderTextColor="#9CA3AF"
             className="mt-2 bg-white border border-gray-200 rounded-2xl px-4 py-3 text-text text-base"
           />
+
+          <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">Business logo</Text>
+          <View className="mt-2 bg-white border border-gray-200 rounded-2xl p-4 flex-row items-center">
+            <View className="w-20 h-20 rounded-2xl bg-gray-100 overflow-hidden items-center justify-center mr-4">
+              {logoUri ? (
+                <Image source={{ uri: logoUri }} className="w-20 h-20" resizeMode="cover" />
+              ) : (
+                <Text className="text-textMuted text-2xl font-bold">
+                  {name.trim().charAt(0).toUpperCase() || "?"}
+                </Text>
+              )}
+            </View>
+            <View className="flex-1">
+              <Pressable
+                onPress={changeLogo}
+                disabled={uploadingLogo}
+                className="bg-white border border-gray-200 rounded-xl px-4 py-2.5 items-center active:opacity-60 flex-row justify-center"
+              >
+                {uploadingLogo ? (
+                  <ActivityIndicator color="#9CA3AF" />
+                ) : (
+                  <Text className="text-text text-sm font-semibold">{logoUri ? "Change logo" : "Upload logo"}</Text>
+                )}
+              </Pressable>
+              <Text className="text-textMuted text-xs mt-2">Square image works best. Saved when you tap Save changes.</Text>
+            </View>
+          </View>
 
           <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">Business name</Text>
           <TextInput

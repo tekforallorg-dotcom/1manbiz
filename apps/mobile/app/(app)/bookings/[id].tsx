@@ -10,6 +10,8 @@ import {
   type BookingStatus,
 } from "../../../lib/bookings";
 import { ScreenHeader } from "../../../components/screen-header";
+import { ChevronRight } from "lucide-react-native";
+import { colors as designColors } from "@1manbiz/design";
 
 const STATUS_STYLES: Record<BookingStatus, { bg: string; text: string; label: string }> = {
   pending:   { bg: "bg-amber-50",  text: "text-amber-700", label: "Pending" },
@@ -141,6 +143,21 @@ export default function BookingDetailScreen() {
             <Text className="text-textMuted text-sm mt-0.5">{booking.customer_phone}</Text>
           ) : null}
         </View>
+
+        {booking.order_id ? (
+          <Pressable
+            onPress={() => router.push({ pathname: "/orders/[id]", params: { id: booking.order_id as string } })}
+            className="mt-4 bg-white border border-gray-200 rounded-2xl p-4 flex-row items-center justify-between active:opacity-60"
+          >
+            <View className="flex-1 pr-3">
+              <Text className="text-textMuted text-xs uppercase tracking-wider">Linked order</Text>
+              <Text className="text-text text-base font-medium mt-1">
+                {booking.order_receipt_code ? "Receipt " + booking.order_receipt_code : "View order"}
+              </Text>
+            </View>
+            <ChevronRight size={18} color={designColors.text} />
+          </Pressable>
+        ) : null}
 
         {booking.product_name ? (
           <View className="mt-4 bg-white border border-gray-200 rounded-2xl p-4">

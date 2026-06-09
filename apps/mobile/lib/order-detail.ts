@@ -26,6 +26,10 @@ export interface OrderDetail {
   cancelled_at: string | null;
   customer_name: string | null;
   customer_phone: string | null;
+  fulfillment_type: string | null;
+  delivery_address: string | null;
+  delivery_fee_kobo: number | null;
+  pickup_at: string | null;
   items: OrderLineItem[];
 }
 
@@ -35,6 +39,7 @@ export async function fetchOrderDetail(orderId: string): Promise<OrderDetail | n
     .select(`
       id, business_id, source, status, subtotal_kobo, currency, notes,
       receipt_code, created_at, paid_at, cancelled_at,
+      fulfillment_type, delivery_address, delivery_fee_kobo, pickup_at,
       customers(name, phone_e164),
       order_items(id, name_snapshot, price_kobo_snapshot, quantity, line_total_kobo)
     `)
@@ -61,6 +66,10 @@ export async function fetchOrderDetail(orderId: string): Promise<OrderDetail | n
     created_at: data.created_at,
     paid_at: data.paid_at,
     cancelled_at: data.cancelled_at,
+    fulfillment_type: (data as any).fulfillment_type ?? null,
+    delivery_address: (data as any).delivery_address ?? null,
+    delivery_fee_kobo: (data as any).delivery_fee_kobo ?? null,
+    pickup_at: (data as any).pickup_at ?? null,
     customer_name: c?.name ?? null,
     customer_phone: c?.phone_e164 ?? null,
     items: ((data as any).order_items ?? []) as OrderLineItem[],

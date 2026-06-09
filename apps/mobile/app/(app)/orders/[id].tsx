@@ -140,6 +140,14 @@ export default function OrderDetailScreen() {
   }
 
   const status = STATUS_STYLES[order.status];
+  const deliveryFeeKobo = order.delivery_fee_kobo ?? 0;
+  const totalKobo = order.subtotal_kobo + deliveryFeeKobo;
+  const fulfillmentLabel =
+    order.fulfillment_type === "delivery"
+      ? "Delivery"
+      : order.fulfillment_type === "pickup"
+        ? "Pickup"
+        : null;
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["top", "bottom"]}>
@@ -150,8 +158,8 @@ export default function OrderDetailScreen() {
           <Text className="text-textMuted text-xs uppercase tracking-wider">Total</Text>
           <View className="flex-row items-center mt-1">
             <View className="flex-row items-baseline">
-              <Text className="text-textMuted text-xl font-normal mr-1">{nairaParts(order.subtotal_kobo).symbol}</Text>
-              <Text className="text-text text-4xl font-bold">{nairaParts(order.subtotal_kobo).amount}</Text>
+              <Text className="text-textMuted text-xl font-normal mr-1">{nairaParts(totalKobo).symbol}</Text>
+              <Text className="text-text text-4xl font-bold">{nairaParts(totalKobo).amount}</Text>
             </View>
             <View className={`${status.bg} px-2.5 py-1 rounded-full ml-3`}>
               <Text className={`${status.text} text-xs font-medium`}>{status.label}</Text>
@@ -169,6 +177,19 @@ export default function OrderDetailScreen() {
           ) : null}
         </View>
 
+        {fulfillmentLabel ? (
+          <View className="mt-6 bg-white border border-gray-200 rounded-2xl p-4">
+            <Text className="text-textMuted text-xs uppercase tracking-wider">Fulfillment</Text>
+            <Text className="text-text text-lg font-semibold mt-1">{fulfillmentLabel}</Text>
+            {order.fulfillment_type === "delivery" && order.delivery_address ? (
+              <Text className="text-textMuted text-sm mt-1">{order.delivery_address}</Text>
+            ) : null}
+            {order.fulfillment_type === "pickup" && order.pickup_at ? (
+              <Text className="text-textMuted text-sm mt-1">Pickup time: {formatDateTime(order.pickup_at)}</Text>
+            ) : null}
+          </View>
+        ) : null}
+
         <View className="mt-6">
           <Text className="text-textMuted text-xs uppercase tracking-wider mb-2">Items</Text>
           <View className="bg-white border border-gray-200 rounded-2xl px-4">
@@ -181,6 +202,18 @@ export default function OrderDetailScreen() {
               <Text className="text-text text-base font-semibold">Subtotal</Text>
               <Text className="text-text text-base font-bold">{formatNaira(order.subtotal_kobo)}</Text>
             </View>
+            {deliveryFeeKobo > 0 ? (
+              <>
+                <View className="border-t border-gray-100 flex-row items-center justify-between py-3">
+                  <Text className="text-textMuted text-base">Delivery</Text>
+                  <Text className="text-text text-base font-medium">{formatNaira(deliveryFeeKobo)}</Text>
+                </View>
+                <View className="border-t border-gray-200 flex-row items-center justify-between py-3">
+                  <Text className="text-text text-base font-semibold">Total</Text>
+                  <Text className="text-text text-base font-bold">{formatNaira(totalKobo)}</Text>
+                </View>
+              </>
+            ) : null}
           </View>
         </View>
 
