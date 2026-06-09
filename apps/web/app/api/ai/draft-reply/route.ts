@@ -6,11 +6,11 @@ import { formatNairaFromKobo } from "@/lib/format";
 import {
   draftReply,
   REPLY_MODEL,
-  type ReplyCatalogProduct,
   type ReplyDeliveryZone,
   type ReplyKnowledgeItem,
   type ReplyLine,
 } from "@/lib/ai/draft-reply";
+import { buildReplyCatalog } from "@/lib/ai/catalog";
 
 /**
  * AI customer-reply draft endpoint (AI-native brick 2). Read-only: returns a
@@ -99,18 +99,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Lookup failed" }, { status: 500 });
   }
 
-  const { data: prodRows, error: prodErr } = await admin
-    .from("products")
-    .select("name, price_kobo, stock_quantity")
-    .eq("business_id", business.id)
-    .eq("status", "active")
-    .order("name", { ascending: true })
-    .limit(200);
-  if (prodErr) {
-    console.error("[ai/draft-reply] products load failed", prodErr);
-    return NextResponse.json({ ok: false, error: "Lookup failed" }, { status: 500 });
-  }
-
   const { data: zoneRows } = await admin
     .from("delivery_zones")
     .select("label, fee_kobo, note")
@@ -129,11 +117,7 @@ export async function POST(request: NextRequest) {
     sender_role: m.sender_role as ReplyLine["sender_role"],
     body_text: (m.body_text as string | null) ?? "",
   }));
-  const catalog: ReplyCatalogProduct[] = (prodRows ?? []).map((p) => ({
-    name: p.name as string,
-    price_naira: formatNairaFromKobo(Number(p.price_kobo)),
-    in_stock: Number(p.stock_quantity) > 0,
-  }));
+  const catalog = await buildReplyCatalog(business.id);
   const deliveryZones: ReplyDeliveryZone[] = (zoneRows ?? []).map((z) => ({
     label: z.label as string,
     fee_naira: formatNairaFromKobo(Number(z.fee_kobo)),

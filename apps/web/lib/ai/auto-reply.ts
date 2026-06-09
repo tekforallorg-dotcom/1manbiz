@@ -4,11 +4,11 @@ import { formatNairaFromKobo } from "@/lib/format";
 import {
   draftReply,
   REPLY_MODEL,
-  type ReplyCatalogProduct,
   type ReplyDeliveryZone,
   type ReplyKnowledgeItem,
   type ReplyLine,
 } from "@/lib/ai/draft-reply";
+import { buildReplyCatalog } from "@/lib/ai/catalog";
 import { shouldAutoSend, type AiMode } from "@/lib/ai/gate";
 import { broadcastTyping } from "@/lib/realtime/typing";
 import {
@@ -258,13 +258,6 @@ export async function maybeAutoReply(args: {
     .eq("conversation_id", conversationId)
     .order("sent_at", { ascending: false })
     .limit(40);
-  const { data: prodRows } = await admin
-    .from("products")
-    .select("name, price_kobo, stock_quantity")
-    .eq("business_id", businessId)
-    .eq("status", "active")
-    .order("name", { ascending: true })
-    .limit(200);
   const { data: zoneRows } = await admin
     .from("delivery_zones")
     .select("label, fee_kobo, note")
@@ -282,11 +275,7 @@ export async function maybeAutoReply(args: {
     sender_role: m.sender_role as ReplyLine["sender_role"],
     body_text: (m.body_text as string | null) ?? "",
   }));
-  const catalog: ReplyCatalogProduct[] = (prodRows ?? []).map((p) => ({
-    name: p.name as string,
-    price_naira: formatNairaFromKobo(Number(p.price_kobo)),
-    in_stock: Number(p.stock_quantity) > 0,
-  }));
+  const catalog = await buildReplyCatalog(businessId);
   const deliveryZones: ReplyDeliveryZone[] = (zoneRows ?? []).map((z) => ({
     label: z.label as string,
     fee_naira: formatNairaFromKobo(Number(z.fee_kobo)),

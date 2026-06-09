@@ -21,6 +21,8 @@ export interface ReplyCatalogProduct {
   name: string;
   price_naira: string;
   in_stock: boolean;
+  options?: string[];
+  variants?: { label: string; price_naira: string; in_stock: boolean }[];
 }
 
 export interface ReplyDeliveryZone {
@@ -150,7 +152,24 @@ export async function draftReply(args: {
   const catalogBlock =
     catalog.length > 0
       ? catalog
-          .map((p) => "- " + p.name + " | " + p.price_naira + " | " + (p.in_stock ? "in stock" : "out of stock"))
+          .map((p) => {
+            let line =
+              "- " + p.name + " | " + p.price_naira + " | " + (p.in_stock ? "in stock" : "out of stock");
+            if (p.options && p.options.length > 0) {
+              line += "\n  Options: " + p.options.join(", ");
+            }
+            if (p.variants && p.variants.length > 0) {
+              line +=
+                "\n" +
+                p.variants
+                  .map(
+                    (v) =>
+                      "  * " + v.label + " | " + v.price_naira + " | " + (v.in_stock ? "in stock" : "out of stock"),
+                  )
+                  .join("\n");
+            }
+            return line;
+          })
           .join("\n")
       : "(no active products)";
 
@@ -250,6 +269,7 @@ export async function draftReply(args: {
     "- Lead with the actual answer in one sentence (yes or no, the price, the policy). Add only what the question needs.\n" +
     "- If already_sent is true, do NOT paste that block again; answer the new point in words and refer back ('as listed above').\n" +
     "- Quote names, prices, fees, and policies EXACTLY as written. Never invent or estimate. Never address the customer by a name unless they gave it in the conversation.\n" +
+    "- Some CATALOG products have OPTIONS (like Color or Storage), shown as indented '*' variant lines each with its own price and availability. When the customer asks what options, colours, sizes, or storage are available, or whether a specific one is in stock, answer from that product's variant lines and quote the variant label and price EXACTLY. If a customer wants a product that has options, ask which option they want before treating it as a specific item.\n" +
     orderRule +
     fulfillmentRule +
     bookingRule +
