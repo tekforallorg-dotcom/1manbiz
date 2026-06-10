@@ -74,6 +74,7 @@ export type DraftReplyResult =
       confidence: "high" | "low";
       bookingAction?: BookingAction;
       orderAction?: OrderAction;
+      showProduct?: { name: string; variant?: string };
     }
   | { ok: false; error: string };
 
@@ -223,13 +224,19 @@ export async function draftReply(args: {
   const orderField = offersOrders
     ? '"order":{"action":"' + orderActionEnum + '","items":[{"name":"<exact catalog product name>","qty":<integer>,"variant":"<exact Choices label once the customer has chosen, omit if the product has no Options>"}]' + orderFulfillmentFields + '},'
     : "";
+  const showField = offersOrders
+    ? '"show":{"name":"<exact catalog product name>","variant":"<exact Choices label once chosen, omit if no Options or not chosen yet>"},'
+    : "";
   const intentOptions =
     "product|delivery|policy|order|" + (offersBookings ? "booking|" : "") + "greeting|other";
   const jsonSchema =
     '{"intent":"' + intentOptions + '","source":"catalog|delivery|knowledge|none","already_sent":true|false,' +
-    bookingField + orderField +
+    bookingField + orderField + showField +
     '"reply":"<message to send>","confidence":"high|low"}';
 
+  const showRule = offersOrders
+    ? "- SHOWING A PRODUCT PHOTO: when the customer asks to SEE a product (a pic, picture, photo, image, 'show me', 'send a pic of X', 'what does it look like'): set \"show\".name to the EXACT catalog product name. If that product has Options, only set \"show\" once the customer has pinned exactly one Choice and set \"show\".variant to that exact Choices label; if they have not chosen yet, do NOT set \"show\", instead ask which option grouped by axis, exactly like ordering. If the product has no Options, set \"show\" right away. If the product is out of stock or not in the catalog, do NOT set \"show\"; say so in words. Keep the reply to one short line that introduces the photo, for example 'Here is the iPhone 17 Pro in 512GB / Red:'. Do not describe how it looks; the photo speaks for itself.\n"
+    : "";
   const system =
     "You are the WhatsApp assistant for a small shop. Reply to the customer's MOST RECENT message, grounded only in the shop's data.\n\n" +
     "You have four inputs: CATALOG (products, prices, stock), DELIVERY (areas and fees), KNOWLEDGE (policies and info: refunds, returns, warranty, hours, payment methods), and CONVERSATION (recent lines; 'Shop:' is the vendor and your own past replies).\n\n" +
@@ -258,10 +265,11 @@ export async function draftReply(args: {
     "    When asking which option, list values grouped by option (Storage: 128GB, 256GB... Color: Black, White...), never the full combination list.\n" +
     "    Never set \"variant\" for a product with no Options. Once the choice is complete, ALWAYS set \"variant\" to the EXACT Choices label.\n" +
     orderRule +
+    showRule +
     fulfillmentRule +
     bookingRule +
     "- If source is 'none' because it is a complaint, haggling, a payment claim, or a custom request, or KNOWLEDGE does not cover a policy question: reply 'Let me check with the shop and get back to you shortly' and set confidence 'low'.\n\n" +
-    "confidence: send-readiness of this reply. Set 'high' for any reply that is safe to send now: a grounded answer from the named block, a greeting, any order create/add/remove/quantity/cancel/confirm/set fulfillment/set delivery area/set pickup time/set payment method or order question, or any booking create/edit/cancel/confirm or a booking clarifying question. Set 'low' ONLY when the reply is the 'let me check with the shop' holding reply (complaint, haggling, payment claim, or a policy KNOWLEDGE does not cover); those wait for the vendor.\n" +
+    "confidence: send-readiness of this reply. Set 'high' for any reply that is safe to send now: a grounded answer from the named block, a greeting, any order create/add/remove/quantity/cancel/confirm/set fulfillment/set delivery area/set pickup time/set payment method or order question, any request to show a product photo, or any booking create/edit/cancel/confirm or a booking clarifying question. Set 'low' ONLY when the reply is the 'let me check with the shop' holding reply (complaint, haggling, payment claim, or a policy KNOWLEDGE does not cover); those wait for the vendor.\n" +
     "Tone: warm, brief, human, like a real shop attendant on WhatsApp. No 'Thank you for your inquiry'. No emojis unless the customer used one. " +
     "Language: '" + language + "'. Style: '" + tone + "'.\n\n" +
     "Respond with ONLY this JSON, no markdown fences, no prose:\n" +
@@ -447,5 +455,19 @@ export async function draftReply(args: {
     confidence,
   });
 
-  return { ok: true, reply, confidence, bookingAction, orderAction };
+  // Parse an optional show-product request (a "send me a pic of X" intent).
+  let showProduct: { name: string; variant?: string } | undefined;
+  if (offersOrders) {
+    const sp = obj.show;
+    if (typeof sp === "object" && sp !== null) {
+      const so = sp as Record<string, unknown>;
+      const nm = typeof so.name === "string" ? so.name.trim() : "";
+      if (nm) {
+        const variant = typeof so.variant === "string" ? so.variant.trim() : "";
+        showProduct = variant ? { name: nm, variant } : { name: nm };
+      }
+    }
+  }
+
+  return { ok: true, reply, confidence, bookingAction, orderAction, showProduct };
 }

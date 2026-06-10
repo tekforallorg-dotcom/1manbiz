@@ -30,6 +30,9 @@ import {
   setDeliveryArea,
   setPaymentMethod,
   setPickupAt,
+  resolveActiveProduct,
+  fetchActiveVariants,
+  matchVariant,
   type OrderSnapshot,
   type EditOrderResult,
 } from "@/lib/ai/actions/order-actions";
@@ -118,6 +121,7 @@ function composeOrderSummary(snap: OrderSnapshot): string {
 // for the confirmation moment. Reads order_items -> products directly so the
 // OrderSnapshot type stays unchanged. Products without an image are skipped.
 interface ProductPhoto {
+  productId: string;
   imageUrl: string;
   caption: string;
 }
@@ -147,10 +151,79 @@ async function fetchOrderProductPhotos(
     const vlabel = (row.variant_label_snapshot as string | null) ?? null;
     const price = Number(row.price_kobo_snapshot ?? 0);
     const caption = (vlabel ? baseName + " - " + vlabel : baseName) + " - " + formatNairaFromKobo(price);
-    photos.push({ imageUrl, caption });
+    photos.push({ productId, imageUrl, caption });
   }
   return photos;
 }
+
+// Product photos already sent to this customer in this conversation, so a
+// product is photographed once (the first time it enters the order) and not
+// re-sent on every held-order recompose.
+async function loadShownProductIds(
+  admin: ReturnType<typeof createAdminClient>,
+  conversationId: string,
+): Promise<Set<string>> {
+  const { data } = await admin
+    .from("conversation_shown_photos")
+    .select("product_id")
+    .eq("conversation_id", conversationId);
+  const set = new Set<string>();
+  for (const r of (data ?? []) as Array<{ product_id: string }>) set.add(r.product_id);
+  return set;
+}
+async function recordShownProductIds(
+  admin: ReturnType<typeof createAdminClient>,
+  conversationId: string,
+  productIds: string[],
+): Promise<void> {
+  if (productIds.length === 0) return;
+  const rows = productIds.map((pid) => ({ conversation_id: conversationId, product_id: pid }));
+  await admin
+    .from("conversation_shown_photos")
+    .upsert(rows, { onConflict: "conversation_id,product_id" });
+}
+
+// Resolve a "show me a pic of X" request to a single product photo. Variants
+// share the product image, so the photo is the product image captioned with the
+// chosen variant label and its price. Null when there is nothing safe to show:
+// the product is unknown, has no image, is out of stock, or has Options the
+// customer has not chosen yet (the brain asks which option in that case).
+async function resolveShowProductPhoto(
+  admin: ReturnType<typeof createAdminClient>,
+  businessId: string,
+  name: string,
+  variant: string | null,
+): Promise<ProductPhoto | null> {
+  const product = await resolveActiveProduct(admin, businessId, name);
+  if (!product) return null;
+  const { data: prow } = await admin
+    .from("products")
+    .select("image_path")
+    .eq("id", product.id)
+    .maybeSingle();
+  const imagePath = ((prow as { image_path?: string | null } | null)?.image_path) ?? null;
+  const imageUrl = getProductImageUrl(imagePath);
+  if (!imageUrl) return null;
+
+  let label: string | null = null;
+  let priceKobo = product.price_kobo;
+  let inStock = product.stock_quantity > 0;
+  const variants = await fetchActiveVariants(admin, product.id, product.price_kobo);
+  if (variants.length > 0) {
+    if (!variant) return null;
+    const v = matchVariant(variants, variant);
+    if (!v) return null;
+    label = v.label;
+    priceKobo = v.price_kobo;
+    inStock = v.stock_quantity > 0;
+  }
+  if (!inStock) return null;
+
+  const caption = (label ? product.name + " - " + label : product.name) +
+    " - " + formatNairaFromKobo(priceKobo);
+  return { productId: product.id, imageUrl, caption };
+}
+
 function composeOrderConfirmed(snap: OrderSnapshot): string {
   return "Your order is confirmed:\n" + orderLines(snap) + "\nTotal: " + formatNairaFromKobo(snap.subtotalKobo) +
     "\nWe will send you a payment link shortly.";
@@ -751,24 +824,56 @@ export async function maybeAutoReply(args: {
     }
   }
 
-  // Held-order presentation: send one photo per distinct product first, so the
-  // customer sees what they are buying at the decision moment. Best-effort and
-  // never blocks the text reply.
-  if (photosForOrderId) {
+  // Resolve an explicit "show me a pic of X" request to one product photo.
+  let showPhoto: ProductPhoto | null = null;
+  if (offersOrders && result.showProduct) {
     try {
-      const photos = await fetchOrderProductPhotos(admin, photosForOrderId);
-      for (const photo of photos) {
-        await sendWhatsAppImage({
+      showPhoto = await resolveShowProductPhoto(
+        admin,
+        businessId,
+        result.showProduct.name,
+        result.showProduct.variant ?? null,
+      );
+    } catch (e) {
+      console.warn("[ai/auto-reply] show product resolve failed", e);
+    }
+  }
+
+  // Send product photos best-effort, before the text, and never block it. Two
+  // sources, mutually exclusive in practice: a held-order presentation sends one
+  // photo per distinct product but only the first time each appears in the
+  // conversation; an explicit show request always sends that one photo. The
+  // order flow wins if both somehow fire on the same turn. Only successfully
+  // sent photos are recorded, so a failed send retries next turn.
+  try {
+    let toSend: ProductPhoto[] = [];
+    let respectShownSet = true;
+    if (photosForOrderId) {
+      toSend = await fetchOrderProductPhotos(admin, photosForOrderId);
+    } else if (showPhoto) {
+      toSend = [showPhoto];
+      respectShownSet = false;
+    }
+    if (toSend.length > 0) {
+      if (respectShownSet) {
+        const shown = await loadShownProductIds(admin, conversationId);
+        toSend = toSend.filter((p) => !shown.has(p.productId));
+      }
+      const sent: string[] = [];
+      for (const photo of toSend) {
+        const r = await sendWhatsAppImage({
           phoneNumberId: channel.meta_phone_number_id,
           accessToken: channel.access_token,
           toE164,
           imageUrl: photo.imageUrl,
           caption: photo.caption,
         });
+        if (r.ok) sent.push(photo.productId);
       }
-    } catch (e) {
-      console.warn("[ai/auto-reply] product photos failed", e);
+      await recordShownProductIds(admin, conversationId, sent);
     }
+  } catch (e) {
+    console.warn("[ai/auto-reply] product photos failed", e);
   }
 
   const sendResult = await sendWhatsAppText({
