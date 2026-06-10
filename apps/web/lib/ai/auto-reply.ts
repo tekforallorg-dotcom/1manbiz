@@ -113,8 +113,8 @@ function orderLines(snap: OrderSnapshot): string {
     .join("\n");
 }
 function composeOrderSummary(snap: OrderSnapshot): string {
-  return "Here is your order:\n" + orderLines(snap) + "\nTotal: " + formatNairaFromKobo(snap.subtotalKobo) +
-    "\nWould you like to add anything else, or confirm your order?";
+  return "In your cart:\n" + orderLines(snap) + "\nTotal: " + formatNairaFromKobo(snap.subtotalKobo) +
+    "\nAnything else, or should I confirm your order?";
 }
 
 // One photo per distinct product in an order, captioned with name and price,
