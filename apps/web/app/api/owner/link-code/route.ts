@@ -55,11 +55,27 @@ export async function POST(request: NextRequest) {
   if (!result.ok) {
     return NextResponse.json({ ok: false, error: result.message }, { status: 500 });
   }
+
+  // The shop's WhatsApp display number, digits only, for a wa.me deep link.
+  // meta_display_phone_number is what the owner actually messages to reach the
+  // bot (e.g. "+1 555-669-8149"); wa.me needs bare digits ("15556698149").
+  const { data: channel } = await admin
+    .from("channel_accounts")
+    .select("meta_display_phone_number")
+    .eq("business_id", biz.id)
+    .eq("channel", "whatsapp")
+    .limit(1)
+    .maybeSingle();
+  const displayRaw =
+    (((channel ?? {}) as Record<string, unknown>).meta_display_phone_number as string | null) ?? null;
+  const waNumber = displayRaw ? displayRaw.replace(/[^0-9]/g, "") : null;
+
   return NextResponse.json({
     ok: true,
     code: result.code,
     expires_at: result.expiresAt,
     already_linked: !!biz.owner_phone,
     linked_phone: biz.owner_phone ?? null,
+    wa_number: waNumber && waNumber.length >= 7 ? waNumber : null,
   });
 }

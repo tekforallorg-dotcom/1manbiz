@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import {
-  View, Text, ScrollView, Pressable, TextInput, Switch, ActivityIndicator, Alert, Image,
+  View, Text, ScrollView, Pressable, TextInput, Switch, ActivityIndicator, Alert, Image, Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
@@ -78,6 +78,7 @@ export default function SettingsScreen() {
   const [linkCode, setLinkCode] = useState<string | null>(null);
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkedPhone, setLinkedPhone] = useState<string | null>(null);
+  const [linkWaLink, setLinkWaLink] = useState<string | null>(null);
   const pickupEnabled = fulfillment === "pickup" || fulfillment === "both";
 
   const makeLinkCode = async () => {
@@ -87,8 +88,23 @@ export default function SettingsScreen() {
     if (result.ok) {
       setLinkCode(result.code);
       setLinkedPhone(result.alreadyLinked ? result.linkedPhone : null);
+      setLinkWaLink(result.waLink);
     } else {
       Alert.alert("Manage by WhatsApp", result.error);
+    }
+  };
+
+  const openWaLink = async () => {
+    if (!linkWaLink) return;
+    try {
+      const ok = await Linking.canOpenURL(linkWaLink);
+      if (ok) {
+        await Linking.openURL(linkWaLink);
+      } else {
+        Alert.alert("Manage by WhatsApp", "Could not open WhatsApp. Send the code shown above to your shop instead.");
+      }
+    } catch {
+      Alert.alert("Manage by WhatsApp", "Could not open WhatsApp. Send the code shown above to your shop instead.");
     }
   };
 
@@ -366,6 +382,14 @@ export default function SettingsScreen() {
                 <Text className="text-text text-2xl font-bold tracking-widest mt-1">{"LINK " + linkCode}</Text>
                 <Text className="text-textMuted text-xs mt-2">Expires in 15 minutes and works once.</Text>
               </View>
+            ) : null}
+            {linkCode && linkWaLink ? (
+              <Pressable
+                onPress={openWaLink}
+                className="bg-primary rounded-xl px-4 py-3 items-center active:opacity-80 mb-3"
+              >
+                <Text className="text-white text-sm font-semibold">Open WhatsApp to link</Text>
+              </Pressable>
             ) : null}
             <Pressable
               onPress={makeLinkCode}
