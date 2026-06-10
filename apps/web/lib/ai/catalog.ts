@@ -89,3 +89,37 @@ export async function buildReplyCatalog(
     return product;
   });
 }
+
+/**
+ * Renders the CATALOG prompt block shared by every brain (customer BizBot
+ * today, the owner-mode management brain next). A product with options prints
+ * its Options axes plus ONE compact Choices line: every active variant label
+ * VERBATIM (the server matches order items against these exact labels), with
+ * a price in parentheses only when it differs from the product price and an
+ * "out of stock" mark when it cannot be sold. Keeps the model's grounding
+ * short, exact, and cheap even at 16+ variants per product.
+ */
+export function renderCatalogBlock(catalog: ReplyCatalogProduct[]): string {
+  if (catalog.length === 0) return "(no active products)";
+  return catalog
+    .map((p) => {
+      let line =
+        "- " + p.name + " | " + p.price_naira + " | " + (p.in_stock ? "in stock" : "out of stock");
+      if (p.options && p.options.length > 0) {
+        line += "\n  Options: " + p.options.join(", ");
+      }
+      if (p.variants && p.variants.length > 0) {
+        const choices = p.variants
+          .map((v) => {
+            const notes: string[] = [];
+            if (v.price_naira !== p.price_naira) notes.push(v.price_naira);
+            if (!v.in_stock) notes.push("out of stock");
+            return notes.length > 0 ? v.label + " (" + notes.join(", ") + ")" : v.label;
+          })
+          .join(", ");
+        line += "\n  Choices: " + choices;
+      }
+      return line;
+    })
+    .join("\n");
+}

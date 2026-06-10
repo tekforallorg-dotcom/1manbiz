@@ -15,6 +15,8 @@
  * sets money and never marks anything paid.
  */
 
+import { renderCatalogBlock } from "@/lib/ai/catalog";
+
 export const REPLY_MODEL = "claude-haiku-4-5-20251001";
 
 export interface ReplyCatalogProduct {
@@ -150,29 +152,7 @@ export async function draftReply(args: {
 
   const recent = lines.slice(-20).join("\n");
 
-  const catalogBlock =
-    catalog.length > 0
-      ? catalog
-          .map((p) => {
-            let line =
-              "- " + p.name + " | " + p.price_naira + " | " + (p.in_stock ? "in stock" : "out of stock");
-            if (p.options && p.options.length > 0) {
-              line += "\n  Options: " + p.options.join(", ");
-            }
-            if (p.variants && p.variants.length > 0) {
-              line +=
-                "\n" +
-                p.variants
-                  .map(
-                    (v) =>
-                      "  * " + v.label + " | " + v.price_naira + " | " + (v.in_stock ? "in stock" : "out of stock"),
-                  )
-                  .join("\n");
-            }
-            return line;
-          })
-          .join("\n")
-      : "(no active products)";
+  const catalogBlock = renderCatalogBlock(catalog);
 
   const deliveryBlock =
     deliveryZones.length > 0
@@ -195,8 +175,8 @@ export async function draftReply(args: {
 
   const orderRule = offersOrders
     ? "- order intent, set the order object and reply (the customer is buying products):\n" +
-      "    If there is NO current order and the customer names item(s) from CATALOG: action 'create', items = each product with its quantity, using the CATALOG name EXACTLY. Reply confirming the items and the total and that the shop owner will send the payment link.\n" +
-      "    If there IS a current order: to add an item action 'add_item' with items [{name, qty}]; to change a quantity action 'set_quantity' with items [{name, qty}] as the new total quantity; to remove an item action 'remove_item' with items [{name}]. Reply with the updated order summary.\n" +
+      "    If there is NO current order and the customer names item(s) from CATALOG: action 'create', items = each product with its quantity (plus its chosen \"variant\" when the product has Options), using the CATALOG name EXACTLY. Reply confirming the items and the total and that the shop owner will send the payment link.\n" +
+      "    If there IS a current order: to add an item action 'add_item' with items [{name, qty, variant when the product has Options}]; to change a quantity action 'set_quantity' with items [{name, qty}] as the new total quantity; to remove an item action 'remove_item' with items [{name}]. Reply with the updated order summary.\n" +
       "    To swap one item for another (change X to Y, swap X for Y, replace X with Y, make it Y instead): action 'replace_item' with EXACTLY two items [{name: the item to remove, qty: 0}, {name: the item to add, qty}] using CATALOG names; the first is removed and the second is added. Do NOT use set_quantity for a swap.\n" +
       "    If the customer confirms the order or says that is all (confirm, that is all, done, looks good, go ahead): action 'confirm'.\n" +
       "    If the customer declines or defers instead of confirming (no; no thanks; not now; maybe later; another time; I will get back to you): action 'decline'. A bare 'no' here means decline, never confirm. Do NOT re-show the order summary and do NOT ask again; a short acknowledgement will be sent.\n" +
@@ -241,7 +221,7 @@ export async function draftReply(args: {
       (offersBookings ? ',"pickup_at":"YYYY-MM-DDTHH:MM"' : "")
     : "";
   const orderField = offersOrders
-    ? '"order":{"action":"' + orderActionEnum + '","items":[{"name":"<exact catalog product name>","qty":<integer>,"variant":"<exact * variant label, omit if the product has no options>"}]' + orderFulfillmentFields + '},'
+    ? '"order":{"action":"' + orderActionEnum + '","items":[{"name":"<exact catalog product name>","qty":<integer>,"variant":"<exact Choices label once the customer has chosen, omit if the product has no Options>"}]' + orderFulfillmentFields + '},'
     : "";
   const intentOptions =
     "product|delivery|policy|order|" + (offersBookings ? "booking|" : "") + "greeting|other";
@@ -270,7 +250,13 @@ export async function draftReply(args: {
     "- Lead with the actual answer in one sentence (yes or no, the price, the policy). Add only what the question needs.\n" +
     "- If already_sent is true, do NOT paste that block again; answer the new point in words and refer back ('as listed above').\n" +
     "- Quote names, prices, fees, and policies EXACTLY as written. Never invent or estimate. Never address the customer by a name unless they gave it in the conversation.\n" +
-    "- Some CATALOG products have OPTIONS (like Color or Storage), shown as indented '*' variant lines each with its own price and availability. When the customer asks what options, colours, sizes, or storage are available, or whether a specific one is in stock, answer from that product's variant lines and quote the variant label and price EXACTLY. If a customer wants a product that has options, ask which option they want; once they choose, set that order item's \"variant\" to the EXACT '*' label (the server applies the variant's price and stock). Never set \"variant\" for a product that has no options.\n" +
+    "- OPTIONS and CHOICES: a CATALOG product may list Options (its axes, like Storage or Color) and Choices (every sellable combination as an exact label). A Choice showing a price in parentheses costs that price; all others cost the product price. A Choice marked 'out of stock' cannot be ordered.\n" +
+    "    Questions about options: when the customer asks what colours, sizes, storage, or versions exist, or whether a specific one is available, answer from Options and Choices and quote labels and prices EXACTLY.\n" +
+    "    One-message happy path: if the customer's message already pins down exactly one Choice (like 'iphone 17 pro 256gb black', in any word order or casing), do NOT ask again; set that item's \"variant\" to the matching Choices label and act on the order in the same turn.\n" +
+    "    Partial choice: if they fixed some options but not all (say Storage but not Color), keep what they chose and ask ONLY for the missing option, listing its available values.\n" +
+    "    Unavailable choice: if they name a value or combination that is not in Choices, or one marked out of stock, say that exact one is not available and offer the nearest available Choices. Never invent a choice.\n" +
+    "    When asking which option, list values grouped by option (Storage: 128GB, 256GB... Color: Black, White...), never the full combination list.\n" +
+    "    Never set \"variant\" for a product with no Options. Once the choice is complete, ALWAYS set \"variant\" to the EXACT Choices label.\n" +
     orderRule +
     fulfillmentRule +
     bookingRule +

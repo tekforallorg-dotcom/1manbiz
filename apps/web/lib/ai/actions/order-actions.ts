@@ -99,33 +99,49 @@ interface ResolvedVariant {
   stock_quantity: number;
 }
 
-// Resolve an ACTIVE variant of a product by its label (whole-string,
-// case-insensitive). Returns null when there is no such active variant, so the
-// caller treats it like an unresolved name and asks the customer to choose. A
-// null variant price inherits the product price; the model never sets price.
-async function resolveActiveVariant(
+// All ACTIVE variants of a product, with inherit-null prices resolved to the
+// product price. One fetch serves both the needs-variant gate and label
+// matching; the model never sets a price.
+async function fetchActiveVariants(
   admin: AdminClient,
   productId: string,
   fallbackPriceKobo: number,
-  label: string,
-): Promise<ResolvedVariant | null> {
-  const trimmed = (label || "").trim();
-  if (!trimmed) return null;
+): Promise<ResolvedVariant[]> {
   const { data } = await admin
     .from("product_variants")
     .select("id, label, price_kobo, stock_quantity, is_active")
     .eq("product_id", productId)
     .eq("is_active", true)
-    .ilike("label", trimmed)
-    .limit(1);
-  if (!data || data.length === 0) return null;
-  const v = data[0] as Record<string, unknown>;
-  return {
+    .limit(200);
+  return ((data ?? []) as Record<string, unknown>[]).map((v) => ({
     id: v.id as string,
     label: v.label as string,
     price_kobo: Number((v.price_kobo as number | null) ?? fallbackPriceKobo),
     stock_quantity: Number(v.stock_quantity),
-  };
+  }));
+}
+
+function normalizeLabel(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+// Match the model's requested label against the active variants: exact match
+// first (case/whitespace-insensitive), then an order-free part match so
+// "Black / 512GB" still finds "512GB / Black". Null means ask the customer;
+// the server never guesses a variant.
+function matchVariant(variants: ResolvedVariant[], requested: string): ResolvedVariant | null {
+  const want = normalizeLabel(requested);
+  if (!want) return null;
+  for (const v of variants) {
+    if (normalizeLabel(v.label) === want) return v;
+  }
+  const wantKey = want.split("/").map((s) => s.trim()).filter(Boolean).sort().join("|");
+  if (!wantKey) return null;
+  for (const v of variants) {
+    const haveKey = normalizeLabel(v.label).split("/").map((s) => s.trim()).filter(Boolean).sort().join("|");
+    if (haveKey === wantKey) return v;
+  }
+  return null;
 }
 
 // Read-only snapshot (used for the prompt context, so no write on every inbound).
@@ -199,6 +215,7 @@ export type CreateOrderResult =
   | { ok: true; order: OrderSnapshot }
   | { ok: false; code: "order_exists"; order: OrderSnapshot }
   | { ok: false; code: "unresolved"; names: string[] }
+  | { ok: false; code: "needs_variant"; names: string[] }
   | { ok: false; code: "out_of_stock"; names: string[] }
   | { ok: false; code: "empty" }
   | { ok: false; code: "error"; message: string };
@@ -227,6 +244,7 @@ export async function createOrder(
     variant_label_snapshot?: string;
   }> = [];
   const unresolved: string[] = [];
+  const needsVariant: string[] = [];
   const outOfStock: string[] = [];
   let subtotalKobo = 0;
 
@@ -236,12 +254,17 @@ export async function createOrder(
       unresolved.push(it.name.trim());
       continue;
     }
+    const variants = await fetchActiveVariants(admin, product.id, product.price_kobo);
     const variantLabel = (it.variant || "").trim();
     let variant: ResolvedVariant | null = null;
-    if (variantLabel) {
-      variant = await resolveActiveVariant(admin, product.id, product.price_kobo, variantLabel);
+    if (variants.length > 0) {
+      variant = variantLabel ? matchVariant(variants, variantLabel) : null;
       if (!variant) {
-        unresolved.push(product.name + " (" + variantLabel + ")");
+        // Server-side gate: an option product is never written as a bare line.
+        // No choice -> needs_variant (the bot asks which option); an
+        // unrecognised choice -> unresolved (the bot offers the real ones).
+        if (variantLabel) unresolved.push(product.name + " (" + variantLabel + ")");
+        else needsVariant.push(product.name);
         continue;
       }
     }
@@ -267,6 +290,7 @@ export async function createOrder(
   }
 
   if (unresolved.length > 0) return { ok: false, code: "unresolved", names: unresolved };
+  if (needsVariant.length > 0) return { ok: false, code: "needs_variant", names: needsVariant };
   if (outOfStock.length > 0) return { ok: false, code: "out_of_stock", names: outOfStock };
   if (rows.length === 0) return { ok: false, code: "empty" };
 
@@ -300,6 +324,7 @@ export async function createOrder(
 export type EditOrderResult =
   | { ok: true; order: OrderSnapshot }
   | { ok: false; code: "unresolved"; names: string[] }
+  | { ok: false; code: "needs_variant"; names: string[] }
   | { ok: false; code: "out_of_stock"; names: string[] }
   | { ok: false; code: "not_in_order"; names: string[] }
   | { ok: false; code: "error"; message: string };
@@ -315,12 +340,16 @@ export async function addItem(
   const product = await resolveActiveProduct(admin, businessId, item.name);
   if (!product) return { ok: false, code: "unresolved", names: [(item.name || "").trim()] };
 
+  const variants = await fetchActiveVariants(admin, product.id, product.price_kobo);
   const variantLabel = (item.variant || "").trim();
   let variant: ResolvedVariant | null = null;
-  if (variantLabel) {
-    variant = await resolveActiveVariant(admin, product.id, product.price_kobo, variantLabel);
+  if (variants.length > 0) {
+    variant = variantLabel ? matchVariant(variants, variantLabel) : null;
     if (!variant) {
-      return { ok: false, code: "unresolved", names: [product.name + " (" + variantLabel + ")"] };
+      if (variantLabel) {
+        return { ok: false, code: "unresolved", names: [product.name + " (" + variantLabel + ")"] };
+      }
+      return { ok: false, code: "needs_variant", names: [product.name] };
     }
   }
   const effPrice = variant ? variant.price_kobo : product.price_kobo;

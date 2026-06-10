@@ -481,6 +481,13 @@ export async function maybeAutoReply(args: {
         bodyText = "I could not find " + created.names.join(", ") + " in our list. Could you pick the exact item from what we have?";
       } else if (created.code === "out_of_stock") {
         bodyText = created.names.join(", ") + " is out of stock right now, so I could not add it. Would you like something else from our list?";
+      } else if (created.code === "needs_variant") {
+        bodyText = created.names
+          .map((n) => {
+            const axes = catalog.find((c) => c.name === n)?.options?.join(" and ");
+            return n + " comes in different " + (axes ? axes + " options" : "options");
+          })
+          .join("; ") + ". Which one would you like?";
       } else if (created.code === "empty") {
         bodyText = "What would you like to order?";
       } else {
@@ -624,6 +631,13 @@ export async function maybeAutoReply(args: {
               bodyText = "I could not find " + added.names.join(", ") + " in our list. Could you pick the exact item from what we have?";
             } else if (added.code === "out_of_stock") {
               bodyText = added.names.join(", ") + " is out of stock right now, so I could not make that change. Would you like something else from our list?";
+            } else if (added.code === "needs_variant") {
+              bodyText = added.names
+                .map((n) => {
+                  const axes = catalog.find((c) => c.name === n)?.options?.join(" and ");
+                  return n + " comes in different " + (axes ? axes + " options" : "options");
+                })
+                .join("; ") + ". Which one would you like?";
             } else {
               console.warn("[ai/auto-reply] replace add failed", added);
               bodyText = "I could not make that change. Please try again shortly.";
@@ -657,6 +671,13 @@ export async function maybeAutoReply(args: {
             bodyText = "I could not find " + res.names.join(", ") + " in our list. Could you pick the exact item from what we have?";
           } else if (res.code === "out_of_stock") {
             bodyText = res.names.join(", ") + " is out of stock right now, so I could not add it. Would you like something else from our list?";
+          } else if (res.code === "needs_variant") {
+            bodyText = res.names
+              .map((n) => {
+                const axes = catalog.find((c) => c.name === n)?.options?.join(" and ");
+                return n + " comes in different " + (axes ? axes + " options" : "options");
+              })
+              .join("; ") + ". Which one would you like?";
           } else if (res.code === "not_in_order") {
             bodyText = res.names.join(", ") + " is not on your current order. Would you like me to add it?";
           } else {
