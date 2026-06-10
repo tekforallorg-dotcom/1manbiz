@@ -10,6 +10,7 @@ import { getActiveBusinessId } from "../../../lib/business";
 import { supabase } from "../../../lib/supabase";
 import { getBusinessLogoUrl } from "../../../lib/image";
 import { pickAndUploadBusinessLogo } from "../../../lib/logo-upload";
+import { generateOwnerLinkCode } from "../../../lib/owner-link";
 
 type AiMode = "off" | "assisted" | "semi" | "autonomous";
 type AiTone = "friendly" | "formal" | "playful";
@@ -74,7 +75,22 @@ export default function SettingsScreen() {
   const [logoPath, setLogoPath] = useState<string | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [linkCode, setLinkCode] = useState<string | null>(null);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkedPhone, setLinkedPhone] = useState<string | null>(null);
   const pickupEnabled = fulfillment === "pickup" || fulfillment === "both";
+
+  const makeLinkCode = async () => {
+    setLinkBusy(true);
+    const result = await generateOwnerLinkCode();
+    setLinkBusy(false);
+    if (result.ok) {
+      setLinkCode(result.code);
+      setLinkedPhone(result.alreadyLinked ? result.linkedPhone : null);
+    } else {
+      Alert.alert("Manage by WhatsApp", result.error);
+    }
+  };
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -333,6 +349,36 @@ export default function SettingsScreen() {
             multiline
             className="mt-2 bg-white border border-gray-200 rounded-2xl px-4 py-3 text-text text-base"
           />
+
+          <Text className="text-textMuted text-xs uppercase tracking-wider mt-6">Manage by WhatsApp</Text>
+          <Text className="text-textMuted text-sm mt-1">
+            Run your shop from your own WhatsApp: ask for sales and stock, restock by message or photo. Generate a code, then send it from your personal number to your shop&apos;s WhatsApp.
+          </Text>
+          <View className="mt-2 bg-white border border-gray-200 rounded-2xl p-4">
+            {linkedPhone ? (
+              <Text className="text-text text-sm mb-3">
+                Linked to <Text className="font-semibold">{linkedPhone}</Text>. Generating a new code does not unlink; send UNLINK from that number to detach.
+              </Text>
+            ) : null}
+            {linkCode ? (
+              <View className="bg-gray-100 rounded-xl px-4 py-3 mb-3">
+                <Text className="text-textMuted text-xs">Send this to your shop on WhatsApp</Text>
+                <Text className="text-text text-2xl font-bold tracking-widest mt-1">{"LINK " + linkCode}</Text>
+                <Text className="text-textMuted text-xs mt-2">Expires in 15 minutes and works once.</Text>
+              </View>
+            ) : null}
+            <Pressable
+              onPress={makeLinkCode}
+              disabled={linkBusy}
+              className="bg-white border border-gray-200 rounded-xl px-4 py-2.5 items-center active:opacity-60 flex-row justify-center"
+            >
+              {linkBusy ? (
+                <ActivityIndicator color="#9CA3AF" />
+              ) : (
+                <Text className="text-text text-sm font-semibold">{linkCode ? "Generate a new code" : "Generate link code"}</Text>
+              )}
+            </Pressable>
+          </View>
 
           <View className="mt-6 bg-white border border-gray-200 rounded-2xl px-4 py-3 flex-row items-center justify-between">
             <View className="flex-1 mr-3">

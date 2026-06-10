@@ -4,7 +4,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { previewFromIncoming } from "@/lib/conversations";
 import { normalizePhoneE164 } from "@/lib/phone";
 import { maybeAutoReply } from "@/lib/ai/auto-reply";
-import { handleOwnerLink, handleOwnerMessage } from "@/lib/ai/owner/route-owner";
+import {
+  handleOwnerLink,
+  handleOwnerLinkExpired,
+  handleOwnerMessage,
+} from "@/lib/ai/owner/route-owner";
 
 /**
  * WhatsApp Cloud API webhook.
@@ -175,13 +179,14 @@ export async function POST(request: NextRequest) {
       // Owner-mode routing data: who owns this shop and the active link code.
       const { data: bizRow } = await admin
         .from("businesses")
-        .select("name, owner_phone, owner_link_code")
+        .select("name, owner_phone, owner_link_code, owner_link_code_expires_at")
         .eq("id", businessId)
         .maybeSingle();
       const biz = (bizRow ?? null) as {
         name?: string | null;
         owner_phone?: string | null;
         owner_link_code?: string | null;
+        owner_link_code_expires_at?: string | null;
       } | null;
 
       // Conversations that received a FRESH customer text in this delivery.
@@ -215,21 +220,36 @@ export async function POST(request: NextRequest) {
         // touches the customer CRM. UNLINK (handled inside) detaches.
         const inboundText = message.type === "text" ? (message.text?.body ?? "").trim() : "";
         const linkMatch = inboundText.match(/^link\s+([a-z0-9-]{4,24})$/i);
-        if (
-          linkMatch &&
-          biz?.owner_link_code &&
-          (linkMatch[1] ?? "").toUpperCase() === biz.owner_link_code.toUpperCase()
-        ) {
-          await handleOwnerLink(admin, { businessId, phoneE164, channelAccountId });
-          continue;
+        if (linkMatch && biz?.owner_link_code) {
+          const codeMatches =
+            (linkMatch[1] ?? "").toUpperCase() === biz.owner_link_code.toUpperCase();
+          const notExpired =
+            !biz.owner_link_code_expires_at ||
+            new Date(biz.owner_link_code_expires_at).getTime() > Date.now();
+          if (codeMatches && notExpired) {
+            await handleOwnerLink(admin, { businessId, phoneE164, channelAccountId });
+            continue;
+          }
+          if (codeMatches && !notExpired) {
+            // Right code, but it has expired: tell them, do not link, do not
+            // fall through to the customer bot.
+            await handleOwnerLinkExpired(admin, { businessId, phoneE164, channelAccountId });
+            continue;
+          }
         }
         if (biz?.owner_phone && biz.owner_phone === phoneE164) {
+          const ownerImageId = message.type === "image" ? (message.image?.id ?? null) : null;
+          const ownerText =
+            message.type === "text"
+              ? inboundText
+              : (message.image?.caption ?? message.video?.caption ?? "").trim();
           await handleOwnerMessage(admin, {
             businessId,
             businessName: biz?.name ?? "your shop",
             phoneE164,
-            text: inboundText,
+            text: ownerText,
             channelAccountId,
+            imageMediaId: ownerImageId,
           });
           continue;
         }

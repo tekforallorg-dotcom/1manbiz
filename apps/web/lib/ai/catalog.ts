@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatNairaFromKobo } from "@/lib/format";
 import type { ReplyCatalogProduct } from "@/lib/ai/draft-reply";
+export type { ReplyCatalogProduct } from "@/lib/ai/draft-reply";
 
 type ProductRow = { id: string; name: string; price_kobo: number; stock_quantity: number };
 type OptionRow = { product_id: string; name: string };

@@ -112,6 +112,54 @@ export type ProposeResult =
   | { ok: true; summary: string }
   | { ok: false; message: string };
 
+const LINK_CODE_TTL_MS = 15 * 60 * 1000;
+
+export type LinkCodeResult =
+  | { ok: true; code: string; expiresAt: string }
+  | { ok: false; message: string };
+
+// Mint a short-lived, single-use owner link code (shown only inside the
+// authenticated app). Unguessable, no ambiguous characters, prefixed so it
+// reads as a code in chat. Consuming it on link nulls owner_link_code.
+export async function generateLinkCode(
+  admin: AdminClient,
+  businessId: string,
+): Promise<LinkCodeResult> {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let body = "";
+  for (let i = 0; i < 6; i += 1) {
+    body += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  const code = "LB-" + body;
+  const expiresAt = new Date(Date.now() + LINK_CODE_TTL_MS).toISOString();
+  const { error } = await admin
+    .from("businesses")
+    .update({ owner_link_code: code, owner_link_code_expires_at: expiresAt })
+    .eq("id", businessId);
+  if (error) {
+    console.error("[owner/actions] link code update failed", error.message);
+    return { ok: false, message: "Could not generate a link code." };
+  }
+  return { ok: true, code, expiresAt };
+}
+
+// Snap-to-restock: the vision layer resolved an exact catalog product (and
+// maybe a variant); the owner's words carry the new total. We reuse the same
+// proposal path so confirmation, bounds, and the sum-of-variants invariant are
+// identical to a typed restock. A vision product with options but no usable
+// quantity, or an ambiguous variant, falls back to a normal clarifying ask.
+export async function proposeStockFromVision(
+  admin: AdminClient,
+  businessId: string,
+  match: { product: string; variant?: string },
+  value: number,
+): Promise<ProposeResult> {
+  const draft: OwnerActionDraft = match.variant
+    ? { kind: "set_stock", product: match.product, variant: match.variant, value }
+    : { kind: "set_stock", product: match.product, value };
+  return proposeOwnerAction(admin, businessId, draft);
+}
+
 // Resolve the draft against the live catalog and store a proposal. The
 // summary the owner confirms is composed from the RESOLVED entities, never
 // from model text, so YES always executes exactly what was shown.
