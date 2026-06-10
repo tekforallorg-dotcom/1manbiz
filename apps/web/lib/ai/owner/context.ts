@@ -38,11 +38,17 @@ function lineName(name: string, label: string | null): string {
   return label ? name + " - " + label : name;
 }
 
+// Short, stable chat ref for an order: last 4 hex chars of its id. Rendered
+// in the blocks so the owner can say "mark #9F3C paid".
+function orderRef(id: string): string {
+  return "#" + id.slice(-4).toUpperCase();
+}
+
 export async function buildOwnerContext(admin: AdminClient, businessId: string): Promise<string> {
   const todayStart = lagosDayStartISO(0);
   const weekStart = lagosDayStartISO(6);
 
-  const [bizRes, paidRes, pendingRes, recentRes, prodRes, varRes, soldRes, catalog] =
+  const [bizRes, paidRes, pendingRes, recentRes, prodRes, varRes, soldRes, catalog, setup] =
     await Promise.all([
       admin.from("businesses").select("low_stock_threshold").eq("id", businessId).maybeSingle(),
       admin
@@ -54,9 +60,11 @@ export async function buildOwnerContext(admin: AdminClient, businessId: string):
         .limit(1000),
       admin
         .from("orders")
-        .select("id", { count: "exact", head: true })
+        .select("id, subtotal_kobo, created_at, customer_id")
         .eq("business_id", businessId)
-        .eq("status", "pending"),
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(8),
       admin
         .from("orders")
         .select("id, status, subtotal_kobo, created_at")
@@ -83,6 +91,7 @@ export async function buildOwnerContext(admin: AdminClient, businessId: string):
         .gte("orders.paid_at", weekStart)
         .limit(1000),
       buildReplyCatalog(businessId),
+      buildSetupBlock(admin, businessId),
     ]);
 
   const threshold = Number(
@@ -135,6 +144,8 @@ export async function buildOwnerContext(admin: AdminClient, businessId: string):
           .map(
             (o) =>
               "- " +
+              orderRef(o.id) +
+              " | " +
               lagosStamp(o.created_at) +
               " | " +
               o.status +
@@ -145,6 +156,45 @@ export async function buildOwnerContext(admin: AdminClient, businessId: string):
           )
           .join("\n")
       : "(no orders yet)";
+
+  // Pending orders with refs and customer names: the owner acts on these
+  // ("mark #9F3C paid", "cancel #12AB").
+  const pendingRows = (pendingRes.data ?? []) as Array<{
+    id: string;
+    subtotal_kobo: number;
+    created_at: string;
+    customer_id: string | null;
+  }>;
+  const pendingCustomerIds = Array.from(
+    new Set(pendingRows.map((o) => o.customer_id).filter((x): x is string => !!x)),
+  );
+  const customerNames = new Map<string, string>();
+  if (pendingCustomerIds.length > 0) {
+    const { data: custRows } = await admin
+      .from("customers")
+      .select("id, name")
+      .in("id", pendingCustomerIds);
+    for (const c of (custRows ?? []) as Array<Record<string, unknown>>) {
+      customerNames.set(c.id as string, ((c.name as string | null) ?? "").trim());
+    }
+  }
+  const pendingBlock =
+    pendingRows.length > 0
+      ? pendingRows
+          .map((o) => {
+            const who = customerNames.get(o.customer_id ?? "") ?? "";
+            return (
+              "- " +
+              orderRef(o.id) +
+              " | " +
+              lagosStamp(o.created_at) +
+              " | " +
+              formatNairaFromKobo(Number(o.subtotal_kobo)) +
+              (who ? " | " + who : "")
+            );
+          })
+          .join("\n")
+      : "(none)";
 
   // Stock on hand: exact counts, owner-grade. Variants listed under product.
   const products = (prodRes.data ?? []) as Array<{
@@ -204,11 +254,87 @@ export async function buildOwnerContext(admin: AdminClient, businessId: string):
   return (
     "SALES TODAY: " + String(todayCount) + " paid orders, " + formatNairaFromKobo(todayKobo) + "\n" +
     "LAST 7 DAYS: " + String(weekCount) + " paid orders, " + formatNairaFromKobo(weekKobo) + "\n" +
-    "PENDING ORDERS (not yet paid): " + String(pendingRes.count ?? 0) + "\n\n" +
+    "PENDING ORDERS (not yet paid, latest first):\n" + pendingBlock + "\n\n" +
     "RECENT ORDERS:\n" + recentBlock + "\n\n" +
     "STOCK ON HAND:\n" + (stockLines.length > 0 ? stockLines.join("\n") : "(no active products)") + "\n\n" +
     "LOW STOCK (at or below " + String(threshold) + "):\n" + (lowLines.length > 0 ? lowLines.join("\n") : "(nothing low)") + "\n\n" +
     "BEST SELLERS (last 7 days, paid):\n" + bestBlock + "\n\n" +
-    "CATALOG:\n" + renderCatalogBlock(catalog)
+    "CATALOG:\n" + renderCatalogBlock(catalog) + "\n\n" +
+    setup
   );
+}
+
+// Setup checklist: where the shop's configuration stands, with example
+// phrasings the owner can act on in this chat (the ones the chat supports)
+// or a note to use the app (for the rest). Sent as the welcome after LINK, on
+// the SETUP command, and included in the brain's context so it can guide
+// onboarding one missing item at a time. Server-computed; the model quotes it.
+export async function buildSetupBlock(admin: AdminClient, businessId: string): Promise<string> {
+  const [bizRes, prodCountRes, knowRes, zoneCountRes] = await Promise.all([
+    admin
+      .from("businesses")
+      .select(
+        "name, address, fulfillment_mode, low_stock_threshold, ai_mode, ai_sends_payment_link, catalogue_active",
+      )
+      .eq("id", businessId)
+      .maybeSingle(),
+    admin
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", businessId)
+      .eq("status", "active"),
+    admin
+      .from("knowledge_items")
+      .select("title")
+      .eq("business_id", businessId)
+      .eq("status", "active")
+      .limit(50),
+    admin
+      .from("delivery_zones")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", businessId),
+  ]);
+
+  const b = (bizRes.data ?? {}) as Record<string, unknown>;
+  const address = ((b.address as string | null) ?? "").trim();
+  const fulfillment = ((b.fulfillment_mode as string | null) ?? "both").trim();
+  const threshold = Number(b.low_stock_threshold ?? 3);
+  const productCount = prodCountRes.count ?? 0;
+  const zoneCount = zoneCountRes.count ?? 0;
+
+  const titles = ((knowRes.data ?? []) as Array<Record<string, unknown>>).map((r) =>
+    String(r.title ?? ""),
+  );
+  const refundTitle = titles.find((t) => /refund|return/i.test(t)) ?? null;
+  const fulfillmentLabel =
+    fulfillment === "both" ? "delivery and pickup" : fulfillment === "delivery" ? "delivery only" : "pickup only";
+
+  const lines: string[] = [];
+  lines.push("SETTINGS AND SETUP:");
+  lines.push(
+    "- Refund policy: " +
+      (refundTitle
+        ? "saved as '" + refundTitle + "'"
+        : "not set. Tell me, e.g. 'Refund policy: refunds within 7 days, item unopened'"),
+  );
+  lines.push(
+    "- Shop info BizBot can quote: " +
+      String(titles.length) +
+      " item" + (titles.length === 1 ? "" : "s") +
+      " (add more here, e.g. 'We open 9am to 7pm Monday to Saturday')",
+  );
+  lines.push(
+    "- Products: " +
+      String(productCount) +
+      " active (add one here: 'add product Phone Case 5000, 20 in stock'; photos and edits in the app)",
+  );
+  lines.push(
+    "- Store address: " + (address ? address : "not set (add it in the app under Settings)"),
+  );
+  lines.push("- Fulfillment: " + fulfillmentLabel + " (change in the app)");
+  if (fulfillment !== "pickup") {
+    lines.push("- Delivery areas: " + String(zoneCount) + " set (managed in the app)");
+  }
+  lines.push("- Low stock alert level: " + String(threshold) + " (change in the app)");
+  return lines.join("\n");
 }

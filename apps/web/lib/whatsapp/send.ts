@@ -75,3 +75,37 @@ export async function sendWhatsAppText(params: {
 
   return { ok: true, wamid };
 }
+
+/**
+ * Mark an inbound message as read and show a typing indicator in the chat
+ * while we compose a reply. Best-effort: failures are logged, never thrown.
+ * Meta clears the indicator when our reply lands (or after about 25 seconds).
+ */
+export async function sendTypingIndicator(params: {
+  phoneNumberId: string;
+  accessToken: string;
+  messageId: string;
+}): Promise<void> {
+  const { phoneNumberId, accessToken, messageId } = params;
+  const url = "https://graph.facebook.com/" + META_GRAPH_VERSION + "/" + phoneNumberId + "/messages";
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + accessToken,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        status: "read",
+        message_id: messageId,
+        typing_indicator: { type: "text" },
+      }),
+    });
+    if (!res.ok) {
+      console.warn("[whatsapp/send] typing indicator non-2xx", res.status);
+    }
+  } catch (e) {
+    console.warn("[whatsapp/send] typing indicator failed", e);
+  }
+}

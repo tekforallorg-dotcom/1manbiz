@@ -227,7 +227,12 @@ export async function POST(request: NextRequest) {
             !biz.owner_link_code_expires_at ||
             new Date(biz.owner_link_code_expires_at).getTime() > Date.now();
           if (codeMatches && notExpired) {
-            await handleOwnerLink(admin, { businessId, phoneE164, channelAccountId });
+            await handleOwnerLink(admin, {
+              businessId,
+              businessName: biz?.name ?? "your shop",
+              phoneE164,
+              channelAccountId,
+            });
             continue;
           }
           if (codeMatches && !notExpired) {
@@ -243,6 +248,9 @@ export async function POST(request: NextRequest) {
             message.type === "text"
               ? inboundText
               : (message.image?.caption ?? message.video?.caption ?? "").trim();
+          const ownerHost =
+            request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+          const ownerProto = request.headers.get("x-forwarded-proto") ?? "https";
           await handleOwnerMessage(admin, {
             businessId,
             businessName: biz?.name ?? "your shop",
@@ -250,6 +258,8 @@ export async function POST(request: NextRequest) {
             text: ownerText,
             channelAccountId,
             imageMediaId: ownerImageId,
+            inboundMessageId: message.id ?? null,
+            origin: ownerHost ? ownerProto + "://" + ownerHost : "https://1manbiz.vercel.app",
           });
           continue;
         }

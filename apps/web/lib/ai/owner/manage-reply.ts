@@ -16,12 +16,14 @@ export interface OwnerChatTurn {
   body: string;
 }
 
-export interface OwnerActionDraft {
-  kind: "set_stock" | "set_price";
-  product: string;
-  variant?: string;
-  value: number;
-}
+export type OwnerActionDraft =
+  | { kind: "set_stock"; product: string; variant?: string; value: number }
+  | { kind: "set_price"; product: string; variant?: string; value: number }
+  | { kind: "add_product"; name: string; price: number; stock: number }
+  | { kind: "set_product_active"; product: string; active: boolean }
+  | { kind: "mark_order_paid"; order: string }
+  | { kind: "cancel_order"; order: string }
+  | { kind: "set_policy"; title: string; content: string };
 
 export interface OwnerDraft {
   reply: string;
@@ -50,6 +52,47 @@ function safeJson(text: string): unknown {
   }
 }
 
+// Lenient, field-by-field parse of the model's action object into the typed
+// union. Anything malformed becomes null (the reply still goes out; the
+// server simply proposes nothing).
+function parseAction(a: Record<string, unknown>): OwnerActionDraft | null {
+  const kind = typeof a.kind === "string" ? a.kind : "";
+  const s = (k: string) => (typeof a[k] === "string" ? (a[k] as string).trim() : "");
+  const n = (k: string) => (typeof a[k] === "number" ? Math.floor(a[k] as number) : NaN);
+
+  if (kind === "set_stock" || kind === "set_price") {
+    const product = s("product");
+    const value = n("value");
+    if (!product || !Number.isFinite(value)) return null;
+    const variant = s("variant");
+    return variant ? { kind, product, variant, value } : { kind, product, value };
+  }
+  if (kind === "add_product") {
+    const name = s("name");
+    const price = n("price");
+    const stock = n("stock");
+    if (!name || !Number.isFinite(price) || !Number.isFinite(stock)) return null;
+    return { kind, name, price, stock };
+  }
+  if (kind === "set_product_active") {
+    const product = s("product");
+    if (!product || typeof a.active !== "boolean") return null;
+    return { kind, product, active: a.active };
+  }
+  if (kind === "mark_order_paid" || kind === "cancel_order") {
+    const order = s("order").replace(/^#/, "");
+    if (!order) return null;
+    return { kind, order };
+  }
+  if (kind === "set_policy") {
+    const title = s("title");
+    const content = s("content");
+    if (!title || !content) return null;
+    return { kind, title, content };
+  }
+  return null;
+}
+
 export async function draftOwnerReply(params: {
   apiKey: string;
   businessName: string;
@@ -65,17 +108,21 @@ export async function draftOwnerReply(params: {
     "Rules:\n" +
     "- Ground every number in the blocks and quote it EXACTLY. Never invent, estimate, or extrapolate.\n" +
     "- Reads (sales, orders, stock counts, low stock, best sellers, prices): answer directly, lead with the numbers, keep it under 8 short lines.\n" +
-    "- Writes: when the owner wants to change stock (restock, set stock, add or remove units) or change a price, emit an action.\n" +
-    "    set_stock: value is the NEW TOTAL quantity. If the owner gives a relative change (add 5, remove 2), compute the new total from STOCK ON HAND. If you cannot see the current count, ask for the exact new total instead of guessing.\n" +
-    "    set_price: value is the NEW price in NAIRA as a plain integer.\n" +
-    "    product must be the exact CATALOG product name. A product with Options also needs \"variant\" set to the EXACT Choices label; if the owner did not pin one down, ask which (group values by option) and emit no action.\n" +
-    "    When you emit an action, keep reply to ONE short sentence; the system sends its own confirmation request.\n" +
-    "- Anything else (logo, settings, customers, refunds, deliveries, payouts): say it is not available in this chat yet and to use the 1Man.Biz app. action null.\n" +
+    "- Writes: when the owner wants to CHANGE something, emit exactly one action and keep reply to ONE short sentence; the system sends its own confirmation request.\n" +
+    "    set_stock {product, variant?, value}: value is the NEW TOTAL quantity. For a relative change (add 5, remove 2) compute the new total from STOCK ON HAND; if you cannot see the current count, ask for the exact new total instead of guessing.\n" +
+    "    set_price {product, variant?, value}: value is the NEW price in NAIRA as a plain integer.\n" +
+    "    For both: product must be the exact CATALOG name. A product with Options also needs variant set to the EXACT Choices label; if the owner did not pin one down, ask which (group values by option) and emit no action.\n" +
+    "    add_product {name, price, stock}: a brand new product. price in naira, stock as a count; if either is missing, ask for it and emit no action.\n" +
+    "    set_product_active {product, active}: hide a product from sale (active false) or bring it back (active true). Remove, hide, archive, delist, take down mean active false; never treat those words as a stock change to zero.\n" +
+    "    mark_order_paid {order} and cancel_order {order}: order is the exact ref shown in PENDING ORDERS or RECENT ORDERS, without the #. If the owner names a customer, find that customer's ref in the blocks; if no ref matches, say so and emit no action.\n" +
+    "    set_policy {title, content}: any rule or info the customer bot should quote to buyers: refund or return policy, warranty, opening hours, how to pay, delivery promise. Title short ('Refund policy', 'Opening hours'); content is the owner's wording, cleaned up.\n" +
+    "- Onboarding: SETTINGS AND SETUP shows what is configured. If the owner just linked or seems unsure, point to the next not-set item using its example phrasing, one at a time.\n" +
+    "- Settings that are app-only (say so briefly, do not emit an action): fulfillment mode, delivery areas and fees, low stock level, autopay, BizBot mode, catalogue page, store address, logo, product photos, customer records, payouts.\n" +
     "- Tone: crisp, numbers first, plain text, no emojis.\n\n" +
     "Respond with ONLY this JSON, no markdown fences, no prose:\n" +
     "{\"reply\":\"<message to the owner>\",\"action\":null}\n" +
     "or\n" +
-    "{\"reply\":\"<one short sentence>\",\"action\":{\"kind\":\"set_stock|set_price\",\"product\":\"<exact CATALOG name>\",\"variant\":\"<exact Choices label, omit when the product has no Options>\",\"value\":<integer>}}";
+    "{\"reply\":\"<one short sentence>\",\"action\":{\"kind\":\"<one of the kinds above>\", ...the fields defined for that kind}}";
 
   const historyLines = history
     .slice(-10)
@@ -127,17 +174,10 @@ export async function draftOwnerReply(params: {
   const reply = typeof p.reply === "string" ? p.reply.trim() : "";
   if (!reply) return { ok: false, error: "AI reply empty" };
 
-  let action: OwnerActionDraft | null = null;
-  if (p.action && typeof p.action === "object") {
-    const a = p.action as Record<string, unknown>;
-    const kind = a.kind === "set_stock" || a.kind === "set_price" ? a.kind : null;
-    const product = typeof a.product === "string" ? a.product.trim() : "";
-    const variant = typeof a.variant === "string" ? a.variant.trim() : "";
-    const value = typeof a.value === "number" ? Math.floor(a.value) : NaN;
-    if (kind && product && Number.isFinite(value)) {
-      action = variant ? { kind, product, variant, value } : { kind, product, value };
-    }
-  }
+  const action =
+    p.action && typeof p.action === "object"
+      ? parseAction(p.action as Record<string, unknown>)
+      : null;
 
   return { ok: true, draft: { reply, action } };
 }

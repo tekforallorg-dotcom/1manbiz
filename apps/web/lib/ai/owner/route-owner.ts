@@ -8,8 +8,8 @@
  */
 
 import type { createAdminClient } from "@/lib/supabase/admin";
-import { sendWhatsAppText } from "@/lib/whatsapp/send";
-import { buildOwnerContext } from "@/lib/ai/owner/context";
+import { sendWhatsAppText, sendTypingIndicator } from "@/lib/whatsapp/send";
+import { buildOwnerContext, buildSetupBlock } from "@/lib/ai/owner/context";
 import { buildReplyCatalog } from "@/lib/ai/catalog";
 import { draftOwnerReply } from "@/lib/ai/owner/manage-reply";
 import { identifyProductFromMedia } from "@/lib/ai/owner/vision";
@@ -26,12 +26,18 @@ import {
 type AdminClient = ReturnType<typeof createAdminClient>;
 
 const HELP_TEXT =
-  "You can ask: sales today, last 7 days, recent orders, pending orders, " +
-  "stock or low stock, best sellers, or how many of a product are left.\n" +
-  "To change things: 'restock iPhone 17 Pro 512GB Black to 10' or " +
-  "'set price of Samsung A26s to 250000', or just send a product photo with " +
-  "the new count. I will ask you to reply YES before anything changes. NO " +
-  "cancels. PENDING shows what is waiting. UNLINK detaches this number.";
+  "Ask me anything about the shop: sales today, last 7 days, pending or recent orders, " +
+  "stock, low stock, best sellers, prices, or your setup.\n\n" +
+  "Change things in plain words:\n" +
+  "- 'restock iPhone 17 Pro 512GB Black to 10' (or send a product photo with the count)\n" +
+  "- 'set price of Samsung A26s to 250000'\n" +
+  "- 'add product Phone Case 5000, 20 in stock'\n" +
+  "- 'hide Pixel 9 Pro' / 'show Pixel 9 Pro again'\n" +
+  "- 'mark #9F3C paid' / 'cancel #9F3C' (refs are shown with your orders)\n" +
+  "- 'Refund policy: refunds within 7 days, item unopened'\n\n" +
+  "I always ask you to reply YES before anything changes; NO cancels. " +
+  "PENDING shows what is waiting, SETUP shows your setup checklist, UNLINK detaches this number. " +
+  "Settings like delivery areas, fulfillment, and payments live in the app.";
 
 // Confirm/cancel are an explicit allow-list: forgiving of how owners actually
 // type, but a free-form sentence never counts as a confirmation.
@@ -93,9 +99,9 @@ async function sendToOwner(
 
 export async function handleOwnerLink(
   admin: AdminClient,
-  params: { businessId: string; phoneE164: string; channelAccountId: string },
+  params: { businessId: string; businessName: string; phoneE164: string; channelAccountId: string },
 ): Promise<void> {
-  const { businessId, phoneE164, channelAccountId } = params;
+  const { businessId, businessName, phoneE164, channelAccountId } = params;
   const { error } = await admin
     .from("businesses")
     .update({
@@ -109,8 +115,12 @@ export async function handleOwnerLink(
     return;
   }
   await storeOwnerMessage(admin, businessId, "in", "LINK (code accepted)");
+  const setup = await buildSetupBlock(admin, businessId);
   const reply =
-    "Linked. This number now manages your shop.\n\n" + HELP_TEXT;
+    "Linked. You now manage " + businessName + " from this chat.\n\n" +
+    "Here is where your setup stands:\n\n" + setup + "\n\n" +
+    "Tell me what to change in plain words; I always ask for a YES first. " +
+    "Send HELP for everything I can do, or SETUP to see this checklist again.";
   await sendToOwner(admin, channelAccountId, phoneE164, reply);
   await storeOwnerMessage(admin, businessId, "out", reply);
   console.log("[owner/route] owner linked", { businessId });
@@ -137,6 +147,8 @@ export async function handleOwnerMessage(
     text: string;
     channelAccountId: string;
     imageMediaId?: string | null;
+    inboundMessageId?: string | null;
+    origin?: string | null;
   },
 ): Promise<void> {
   const { businessId, businessName, phoneE164, text, channelAccountId } = params;
@@ -146,6 +158,24 @@ export async function handleOwnerMessage(
     await sendToOwner(admin, channelAccountId, phoneE164, body);
     await storeOwnerMessage(admin, businessId, "out", body);
   };
+
+  // Loading behaviour: mark the inbound as read and show a typing indicator
+  // while we work (vision and brain calls take a few seconds). Best-effort,
+  // fire-and-forget; the indicator clears when our reply lands.
+  if (params.inboundMessageId) {
+    const inboundId = params.inboundMessageId;
+    void loadChannel(admin, channelAccountId)
+      .then((ch) =>
+        ch
+          ? sendTypingIndicator({
+              phoneNumberId: ch.phoneNumberId,
+              accessToken: ch.accessToken,
+              messageId: inboundId,
+            })
+          : undefined,
+      )
+      .catch(() => undefined);
+  }
 
   // ----- Photo: snap-to-restock -----
   // The owner sends a product picture, optionally with the new count in the
@@ -217,6 +247,12 @@ export async function handleOwnerMessage(
     return;
   }
 
+  if (t === "setup") {
+    const setup = await buildSetupBlock(admin, businessId);
+    await reply(setup + "\n\nTell me in plain words and I will set it up.");
+    return;
+  }
+
   if (t === "pending" || t === "status") {
     const pending = await findPendingAction(admin, businessId);
     await reply(
@@ -228,7 +264,7 @@ export async function handleOwnerMessage(
   }
 
   if (YES_WORDS.has(t)) {
-    const result = await executePendingAction(admin, businessId);
+    const result = await executePendingAction(admin, businessId, { origin: params.origin ?? undefined });
     if (result === null) {
       await reply("Nothing pending to confirm.");
     } else if (result.ok) {
