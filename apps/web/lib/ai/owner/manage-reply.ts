@@ -97,7 +97,89 @@ function parseAction(a: Record<string, unknown>): OwnerActionDraft | null {
 // during the photo-add flow. No model round-trip: we read a price (with k/m
 // suffixes and naira words), a stock count, and a fallback name. Kept simple
 // and predictable; the owner confirms the final summary before anything saves.
-export function extractProductFields(text: string): {
+export interface ProductFields {
+  name: string | null;
+  priceNaira: number | null;
+  stock: number | null;
+}
+
+// Model-based extraction of product fields from a natural-language owner reply
+// during the photo-add flow. People type prices and counts every which way
+// ("2.8million", "2.8m", "N2,800,000", "10 piece", "i get 10", Pidgin, etc),
+// which no regex handles well. We give Haiku the fields known so far plus the
+// latest message and ask for ONLY the fields it can confidently read; anything
+// unclear stays null. Bounds are still validated server-side and a YES is
+// still required, so the model can never set money or save on its own. Falls
+// back to the regex extractor if the call fails, so a hiccup never blocks the
+// draft.
+export async function extractProductFieldsAI(params: {
+  apiKey: string;
+  latest: string;
+  known: { name: string | null; priceNaira: number | null; stock: number | null };
+}): Promise<ProductFields> {
+  const { apiKey, latest, known } = params;
+
+  const system =
+    "You help a shop owner add ONE new product by reading their WhatsApp message. " +
+    "Pull out the product NAME, the PRICE in naira, and the STOCK count (how many they have). " +
+    "The owner may write casually or in Nigerian English/Pidgin.\n" +
+    "Rules:\n" +
+    "- PRICE: return a plain integer of naira. Read shorthand: '2.8million' or '2.8m' = 2800000; " +
+    "'650k' = 650000; 'N2,800,000' or '2800000 naira' = 2800000. Never include kobo.\n" +
+    "- STOCK: a whole number of units. '10 piece', '10 pcs', 'i have 10', 'i get 10', '10 remain' all = 10.\n" +
+    "- NAME: the product name only, cleaned of words like 'add', 'this', 'price', 'stock'. " +
+    "Keep model/colour/size words that are part of the name (e.g. 'iPad Air M3 white').\n" +
+    "- Only return a field if THIS message (or the known values) makes it clear. If a field is not " +
+    "stated or you are unsure, return null for it. Never guess a price or a count.\n" +
+    "- Do not invent a name. If the message is only a price or only a count, name is null.\n\n" +
+    "Respond with ONLY this JSON, no prose, no fences:\n" +
+    "{\"name\":<string or null>,\"price_naira\":<integer or null>,\"stock\":<integer or null>}";
+
+  const knownLines =
+    "Known so far: name=" + (known.name ?? "unknown") +
+    ", price_naira=" + (known.priceNaira != null ? String(known.priceNaira) : "unknown") +
+    ", stock=" + (known.stock != null ? String(known.stock) : "unknown") + ".";
+  const user = knownLines + "\nOwner's latest message: " + latest;
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: OWNER_MODEL,
+        max_tokens: 200,
+        system,
+        messages: [{ role: "user", content: user }],
+      }),
+    });
+    if (!res.ok) {
+      console.warn("[owner/extract] non-200, falling back", res.status);
+      return extractProductFieldsRegex(latest);
+    }
+    const data = (await res.json()) as unknown;
+    const parsed = safeJson(extractText(data));
+    if (!parsed || typeof parsed !== "object") return extractProductFieldsRegex(latest);
+    const p = parsed as Record<string, unknown>;
+    const name = typeof p.name === "string" && p.name.trim() ? p.name.trim() : null;
+    const priceNaira =
+      typeof p.price_naira === "number" && Number.isFinite(p.price_naira)
+        ? Math.floor(p.price_naira)
+        : null;
+    const stock =
+      typeof p.stock === "number" && Number.isFinite(p.stock) ? Math.floor(p.stock) : null;
+    return { name, priceNaira, stock };
+  } catch (e) {
+    console.warn("[owner/extract] threw, falling back", e);
+    return extractProductFieldsRegex(latest);
+  }
+}
+
+// Deterministic fallback used only when the model call fails.
+export function extractProductFieldsRegex(text: string): {
   name: string | null;
   priceNaira: number | null;
   stock: number | null;

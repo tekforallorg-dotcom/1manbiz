@@ -28,7 +28,7 @@ import {
   proposeDraftProduct,
   type DraftProduct,
 } from "@/lib/ai/owner/owner-actions";
-import { extractProductFields } from "@/lib/ai/owner/manage-reply";
+import { extractProductFieldsAI } from "@/lib/ai/owner/manage-reply";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -126,11 +126,16 @@ async function storeOwnerPhoto(
 async function advanceDraft(
   admin: AdminClient,
   businessId: string,
+  apiKey: string,
   draft: DraftProduct,
   text: string,
   reply: (body: string) => Promise<void>,
 ): Promise<void> {
-  const fields = extractProductFields(text);
+  const fields = await extractProductFieldsAI({
+    apiKey,
+    latest: text,
+    known: { name: draft.name, priceNaira: draft.priceKobo != null ? Math.round(draft.priceKobo / 100) : null, stock: draft.stock },
+  });
   const filled = await fillDraftProduct(admin, draft, fields);
   if (filled.name && filled.priceKobo != null && filled.stock != null) {
     const proposed = await proposeDraftProduct(admin, businessId, filled);
@@ -292,7 +297,7 @@ export async function handleOwnerMessage(
         return;
       }
       // The caption may already carry price or stock; fold them in immediately.
-      await advanceDraft(admin, businessId, draft, text, reply);
+      await advanceDraft(admin, businessId, apiKey, draft, text, reply);
       return;
     }
 
@@ -346,7 +351,12 @@ export async function handleOwnerMessage(
   if (!CONTROL.has(t)) {
     const draft = await findDraftProduct(admin, businessId);
     if (draft) {
-      await advanceDraft(admin, businessId, draft, text, reply);
+      const draftApiKey = process.env.ANTHROPIC_API_KEY;
+      if (!draftApiKey) {
+        await reply("The assistant is not configured right now. Try again shortly.");
+        return;
+      }
+      await advanceDraft(admin, businessId, draftApiKey, draft, text, reply);
       return;
     }
   }
