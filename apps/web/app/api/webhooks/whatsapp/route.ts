@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { previewFromIncoming } from "@/lib/conversations";
 import { normalizePhoneE164 } from "@/lib/phone";
 import { maybeAutoReply } from "@/lib/ai/auto-reply";
+import { handleOwnerLink, handleOwnerMessage } from "@/lib/ai/owner/route-owner";
 
 /**
  * WhatsApp Cloud API webhook.
@@ -171,6 +172,18 @@ export async function POST(request: NextRequest) {
       const businessId: string = channelAccount.business_id;
       const channelAccountId: string = channelAccount.id;
 
+      // Owner-mode routing data: who owns this shop and the active link code.
+      const { data: bizRow } = await admin
+        .from("businesses")
+        .select("name, owner_phone, owner_link_code")
+        .eq("id", businessId)
+        .maybeSingle();
+      const biz = (bizRow ?? null) as {
+        name?: string | null;
+        owner_phone?: string | null;
+        owner_link_code?: string | null;
+      } | null;
+
       // Conversations that received a FRESH customer text in this delivery.
       // We auto-reply once per conversation after the message loop (batch-safe),
       // and only on fresh inserts so webhook retries never double-reply.
@@ -194,6 +207,32 @@ export async function POST(request: NextRequest) {
           continue;
         }
         const contactName = contactsByWaId.get(waId)?.name ?? null;
+
+        // ----- Owner mode -----
+        // LINK <code> claims ownership from the owner's personal phone
+        // (possession of the device is the handshake). Once linked, every
+        // message from owner_phone routes to the management brain and never
+        // touches the customer CRM. UNLINK (handled inside) detaches.
+        const inboundText = message.type === "text" ? (message.text?.body ?? "").trim() : "";
+        const linkMatch = inboundText.match(/^link\s+([a-z0-9-]{4,24})$/i);
+        if (
+          linkMatch &&
+          biz?.owner_link_code &&
+          (linkMatch[1] ?? "").toUpperCase() === biz.owner_link_code.toUpperCase()
+        ) {
+          await handleOwnerLink(admin, { businessId, phoneE164, channelAccountId });
+          continue;
+        }
+        if (biz?.owner_phone && biz.owner_phone === phoneE164) {
+          await handleOwnerMessage(admin, {
+            businessId,
+            businessName: biz?.name ?? "your shop",
+            phoneE164,
+            text: inboundText,
+            channelAccountId,
+          });
+          continue;
+        }
 
         // 1) Find or create customer for this business + phone.
         const { data: existingCustomer, error: custLookupErr } = await admin

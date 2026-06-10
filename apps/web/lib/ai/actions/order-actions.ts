@@ -68,7 +68,7 @@ function cleanQty(n: number): number {
 // wildcard is a whole-string case-insensitive compare, so "iphone 17 air"
 // matches "iPhone 17 Air" but a partial like "iphone" does not. Returns null on
 // no match so the caller asks the customer to choose; the model never sets a price.
-async function resolveActiveProduct(
+export async function resolveActiveProduct(
   admin: AdminClient,
   businessId: string,
   name: string,
@@ -92,7 +92,7 @@ async function resolveActiveProduct(
   };
 }
 
-interface ResolvedVariant {
+export interface ResolvedVariant {
   id: string;
   label: string;
   price_kobo: number;
@@ -102,7 +102,7 @@ interface ResolvedVariant {
 // All ACTIVE variants of a product, with inherit-null prices resolved to the
 // product price. One fetch serves both the needs-variant gate and label
 // matching; the model never sets a price.
-async function fetchActiveVariants(
+export async function fetchActiveVariants(
   admin: AdminClient,
   productId: string,
   fallbackPriceKobo: number,
@@ -129,7 +129,7 @@ function normalizeLabel(s: string): string {
 // first (case/whitespace-insensitive), then an order-free part match so
 // "Black / 512GB" still finds "512GB / Black". Null means ask the customer;
 // the server never guesses a variant.
-function matchVariant(variants: ResolvedVariant[], requested: string): ResolvedVariant | null {
+export function matchVariant(variants: ResolvedVariant[], requested: string): ResolvedVariant | null {
   const want = normalizeLabel(requested);
   if (!want) return null;
   for (const v of variants) {

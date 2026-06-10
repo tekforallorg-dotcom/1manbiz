@@ -33,6 +33,7 @@ import {
   type EditOrderResult,
 } from "@/lib/ai/actions/order-actions";
 import { initPaymentForBusinessOrder } from "@/lib/payments/init";
+import { notifyOwnerOrderConfirmed } from "@/lib/ai/owner/alerts";
 
 // Low-confidence fallback lines. When the model is not confident, we send one of
 // these at random (instead of going silent) to invite the customer to restate.
@@ -724,4 +725,17 @@ export async function maybeAutoReply(args: {
     .eq("id", conversationId);
 
   await logDecision("auto_sent", actionDecision ?? undefined);
+
+  // Owner alert: a confirmed order is worth a ping to the shop owner's own
+  // WhatsApp. Best-effort; never blocks or fails the customer reply.
+  if (actionDecision && actionDecision.kind === "order_proposal") {
+    const p = actionDecision.proposal as Record<string, unknown>;
+    if (p.action === "confirm_order" && typeof p.order_id === "string") {
+      try {
+        await notifyOwnerOrderConfirmed(admin, p.order_id);
+      } catch (e) {
+        console.error("[ai/auto-reply] owner confirm alert threw", e);
+      }
+    }
+  }
 }

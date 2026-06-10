@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendReceiptForOrder } from "@/lib/receipt-send";
+import { notifyOwnerOrderPaid } from "@/lib/ai/owner/alerts";
 
 /**
  * Paystack webhook. The ONLY trusted path that marks an order paid.
@@ -189,6 +190,13 @@ export async function POST(request: NextRequest) {
     }
   } catch (e) {
     console.error("[paystack-webhook] receipt auto-send threw", e);
+  }
+
+  // Owner alert: payment received + any low-stock fallout. Best-effort.
+  try {
+    await notifyOwnerOrderPaid(admin, order.id);
+  } catch (e) {
+    console.error("[paystack-webhook] owner alert threw", e);
   }
 
   console.log("[paystack-webhook] order marked paid", {
