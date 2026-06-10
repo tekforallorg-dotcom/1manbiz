@@ -45,6 +45,7 @@ export interface OrderSnapshot {
 export interface OrderItemInput {
   name: string;
   qty: number;
+  variant?: string;
 }
 
 interface ResolvedProduct {
@@ -91,18 +92,58 @@ async function resolveActiveProduct(
   };
 }
 
+interface ResolvedVariant {
+  id: string;
+  label: string;
+  price_kobo: number;
+  stock_quantity: number;
+}
+
+// Resolve an ACTIVE variant of a product by its label (whole-string,
+// case-insensitive). Returns null when there is no such active variant, so the
+// caller treats it like an unresolved name and asks the customer to choose. A
+// null variant price inherits the product price; the model never sets price.
+async function resolveActiveVariant(
+  admin: AdminClient,
+  productId: string,
+  fallbackPriceKobo: number,
+  label: string,
+): Promise<ResolvedVariant | null> {
+  const trimmed = (label || "").trim();
+  if (!trimmed) return null;
+  const { data } = await admin
+    .from("product_variants")
+    .select("id, label, price_kobo, stock_quantity, is_active")
+    .eq("product_id", productId)
+    .eq("is_active", true)
+    .ilike("label", trimmed)
+    .limit(1);
+  if (!data || data.length === 0) return null;
+  const v = data[0] as Record<string, unknown>;
+  return {
+    id: v.id as string,
+    label: v.label as string,
+    price_kobo: Number((v.price_kobo as number | null) ?? fallbackPriceKobo),
+    stock_quantity: Number(v.stock_quantity),
+  };
+}
+
 // Read-only snapshot (used for the prompt context, so no write on every inbound).
 async function readSnapshot(admin: AdminClient, orderId: string): Promise<OrderSnapshot> {
   const { data: items } = await admin
     .from("order_items")
-    .select("name_snapshot, quantity, line_total_kobo")
+    .select("name_snapshot, variant_label_snapshot, quantity, line_total_kobo")
     .eq("order_id", orderId)
     .order("created_at", { ascending: true });
-  const lines: OrderLineView[] = (items ?? []).map((r) => ({
-    name: r.name_snapshot as string,
-    quantity: Number(r.quantity),
-    line_total_kobo: Number(r.line_total_kobo),
-  }));
+  const lines: OrderLineView[] = (items ?? []).map((r) => {
+    const baseName = r.name_snapshot as string;
+    const vlabel = (r.variant_label_snapshot as string | null) ?? null;
+    return {
+      name: vlabel ? baseName + " - " + vlabel : baseName,
+      quantity: Number(r.quantity),
+      line_total_kobo: Number(r.line_total_kobo),
+    };
+  });
   const subtotalKobo = lines.reduce((s, l) => s + l.line_total_kobo, 0);
 
   const { data: orderRow } = await admin
@@ -182,6 +223,8 @@ export async function createOrder(
     price_kobo_snapshot: number;
     quantity: number;
     line_total_kobo: number;
+    variant_id?: string;
+    variant_label_snapshot?: string;
   }> = [];
   const unresolved: string[] = [];
   const outOfStock: string[] = [];
@@ -193,19 +236,33 @@ export async function createOrder(
       unresolved.push(it.name.trim());
       continue;
     }
-    if (product.stock_quantity <= 0) {
-      outOfStock.push(product.name);
+    const variantLabel = (it.variant || "").trim();
+    let variant: ResolvedVariant | null = null;
+    if (variantLabel) {
+      variant = await resolveActiveVariant(admin, product.id, product.price_kobo, variantLabel);
+      if (!variant) {
+        unresolved.push(product.name + " (" + variantLabel + ")");
+        continue;
+      }
+    }
+    const effPrice = variant ? variant.price_kobo : product.price_kobo;
+    const effStock = variant ? variant.stock_quantity : product.stock_quantity;
+    if (effStock <= 0) {
+      outOfStock.push(variant ? product.name + " (" + variant.label + ")" : product.name);
       continue;
     }
     const qty = cleanQty(it.qty);
-    const lineTotal = product.price_kobo * qty;
+    const lineTotal = effPrice * qty;
     subtotalKobo += lineTotal;
     rows.push({
       product_id: product.id,
       name_snapshot: product.name,
-      price_kobo_snapshot: product.price_kobo,
+      price_kobo_snapshot: effPrice,
       quantity: qty,
       line_total_kobo: lineTotal,
+      ...(variant
+        ? { variant_id: variant.id, variant_label_snapshot: variant.label }
+        : {}),
     });
   }
 
@@ -257,14 +314,29 @@ export async function addItem(
 ): Promise<EditOrderResult> {
   const product = await resolveActiveProduct(admin, businessId, item.name);
   if (!product) return { ok: false, code: "unresolved", names: [(item.name || "").trim()] };
-  if (product.stock_quantity <= 0) return { ok: false, code: "out_of_stock", names: [product.name] };
+
+  const variantLabel = (item.variant || "").trim();
+  let variant: ResolvedVariant | null = null;
+  if (variantLabel) {
+    variant = await resolveActiveVariant(admin, product.id, product.price_kobo, variantLabel);
+    if (!variant) {
+      return { ok: false, code: "unresolved", names: [product.name + " (" + variantLabel + ")"] };
+    }
+  }
+  const effPrice = variant ? variant.price_kobo : product.price_kobo;
+  const effStock = variant ? variant.stock_quantity : product.stock_quantity;
+  const displayName = variant ? product.name + " (" + variant.label + ")" : product.name;
+  if (effStock <= 0) return { ok: false, code: "out_of_stock", names: [displayName] };
   const addQty = cleanQty(item.qty);
 
-  const { data: line } = await admin
+  const lineSel = admin
     .from("order_items")
     .select("id, quantity, price_kobo_snapshot")
     .eq("order_id", orderId)
-    .eq("product_id", product.id)
+    .eq("product_id", product.id);
+  const { data: line } = await (
+    variant ? lineSel.eq("variant_id", variant.id) : lineSel.is("variant_id", null)
+  )
     .limit(1)
     .maybeSingle();
 
@@ -282,9 +354,12 @@ export async function addItem(
       order_id: orderId,
       product_id: product.id,
       name_snapshot: product.name,
-      price_kobo_snapshot: product.price_kobo,
+      price_kobo_snapshot: effPrice,
       quantity: addQty,
-      line_total_kobo: product.price_kobo * addQty,
+      line_total_kobo: effPrice * addQty,
+      ...(variant
+        ? { variant_id: variant.id, variant_label_snapshot: variant.label }
+        : {}),
     });
     if (error) return { ok: false, code: "error", message: error.message };
   }

@@ -50,6 +50,7 @@ export interface BookingAction {
 export interface OrderActionItem {
   name: string;
   qty: number;
+  variant?: string;
 }
 
 export interface OrderAction {
@@ -240,7 +241,7 @@ export async function draftReply(args: {
       (offersBookings ? ',"pickup_at":"YYYY-MM-DDTHH:MM"' : "")
     : "";
   const orderField = offersOrders
-    ? '"order":{"action":"' + orderActionEnum + '","items":[{"name":"<exact catalog product name>","qty":<integer>}]' + orderFulfillmentFields + '},'
+    ? '"order":{"action":"' + orderActionEnum + '","items":[{"name":"<exact catalog product name>","qty":<integer>,"variant":"<exact * variant label, omit if the product has no options>"}]' + orderFulfillmentFields + '},'
     : "";
   const intentOptions =
     "product|delivery|policy|order|" + (offersBookings ? "booking|" : "") + "greeting|other";
@@ -269,7 +270,7 @@ export async function draftReply(args: {
     "- Lead with the actual answer in one sentence (yes or no, the price, the policy). Add only what the question needs.\n" +
     "- If already_sent is true, do NOT paste that block again; answer the new point in words and refer back ('as listed above').\n" +
     "- Quote names, prices, fees, and policies EXACTLY as written. Never invent or estimate. Never address the customer by a name unless they gave it in the conversation.\n" +
-    "- Some CATALOG products have OPTIONS (like Color or Storage), shown as indented '*' variant lines each with its own price and availability. When the customer asks what options, colours, sizes, or storage are available, or whether a specific one is in stock, answer from that product's variant lines and quote the variant label and price EXACTLY. If a customer wants a product that has options, ask which option they want before treating it as a specific item.\n" +
+    "- Some CATALOG products have OPTIONS (like Color or Storage), shown as indented '*' variant lines each with its own price and availability. When the customer asks what options, colours, sizes, or storage are available, or whether a specific one is in stock, answer from that product's variant lines and quote the variant label and price EXACTLY. If a customer wants a product that has options, ask which option they want; once they choose, set that order item's \"variant\" to the EXACT '*' label (the server applies the variant's price and stock). Never set \"variant\" for a product that has no options.\n" +
     orderRule +
     fulfillmentRule +
     bookingRule +
@@ -411,7 +412,8 @@ export async function draftReply(args: {
         if (!nm) continue;
         let qty = typeof r.qty === "number" ? Math.floor(r.qty) : 1;
         if (!Number.isFinite(qty) || qty < 0) qty = 1;
-        items.push({ name: nm, qty });
+        const variant = typeof r.variant === "string" ? r.variant.trim() : "";
+        items.push(variant ? { name: nm, qty, variant } : { name: nm, qty });
       }
       const first = items.length > 0 ? items[0] : undefined;
       if (action === "cancel") {
