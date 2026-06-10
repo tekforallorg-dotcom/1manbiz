@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendWhatsAppText } from "@/lib/whatsapp/send";
+import { sendWhatsAppText, sendWhatsAppImage, sendTypingIndicator } from "@/lib/whatsapp/send";
+import { getProductImageUrl } from "@/lib/storage";
 import { formatNairaFromKobo } from "@/lib/format";
 import {
   draftReply,
@@ -112,6 +113,44 @@ function composeOrderSummary(snap: OrderSnapshot): string {
   return "Here is your order:\n" + orderLines(snap) + "\nTotal: " + formatNairaFromKobo(snap.subtotalKobo) +
     "\nWould you like to add anything else, or confirm your order?";
 }
+
+// One photo per distinct product in an order, captioned with name and price,
+// for the confirmation moment. Reads order_items -> products directly so the
+// OrderSnapshot type stays unchanged. Products without an image are skipped.
+interface ProductPhoto {
+  imageUrl: string;
+  caption: string;
+}
+async function fetchOrderProductPhotos(
+  admin: ReturnType<typeof createAdminClient>,
+  orderId: string,
+): Promise<ProductPhoto[]> {
+  const { data, error } = await admin
+    .from("order_items")
+    .select("product_id, name_snapshot, variant_label_snapshot, price_kobo_snapshot, products(image_path)")
+    .eq("order_id", orderId)
+    .order("created_at", { ascending: true });
+  if (error || !data) return [];
+  const seen = new Set<string>();
+  const photos: ProductPhoto[] = [];
+  for (const row of data as Array<Record<string, unknown>>) {
+    const productId = (row.product_id as string | null) ?? null;
+    if (!productId || seen.has(productId)) continue;
+    seen.add(productId);
+    const prod = row.products as { image_path?: string | null } | { image_path?: string | null }[] | null;
+    const imagePath = Array.isArray(prod)
+      ? (prod[0]?.image_path ?? null)
+      : (prod?.image_path ?? null);
+    const imageUrl = getProductImageUrl(imagePath);
+    if (!imageUrl) continue;
+    const baseName = (row.name_snapshot as string | null) ?? "Item";
+    const vlabel = (row.variant_label_snapshot as string | null) ?? null;
+    const price = Number(row.price_kobo_snapshot ?? 0);
+    const caption = (vlabel ? baseName + " - " + vlabel : baseName) + " - " + formatNairaFromKobo(price);
+    photos.push({ imageUrl, caption });
+  }
+  return photos;
+}
 function composeOrderConfirmed(snap: OrderSnapshot): string {
   return "Your order is confirmed:\n" + orderLines(snap) + "\nTotal: " + formatNairaFromKobo(snap.subtotalKobo) +
     "\nWe will send you a payment link shortly.";
@@ -165,8 +204,13 @@ export async function maybeAutoReply(args: {
   channelAccountId: string;
   toE164: string;
   origin: string;
+  inboundMessageId?: string | null;
 }): Promise<void> {
   const { businessId, conversationId, channelAccountId, toE164, origin } = args;
+  const inboundMessageId = args.inboundMessageId ?? null;
+  // When set, the reply being sent is a held-order presentation; we send one
+  // product photo per distinct product just before the text. Best-effort.
+  let photosForOrderId: string | null = null;
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return;
@@ -202,6 +246,16 @@ export async function maybeAutoReply(args: {
     .maybeSingle();
   if (!channel || channel.status !== "connected") return;
   if (!channel.meta_phone_number_id || !channel.access_token) return;
+
+  // Show the customer a typing indicator while the brain works. Best-effort,
+  // mirrors owner-mode; Meta clears it when our reply lands.
+  if (inboundMessageId) {
+    await sendTypingIndicator({
+      phoneNumberId: channel.meta_phone_number_id,
+      accessToken: channel.access_token,
+      messageId: inboundMessageId,
+    });
+  }
 
   // Transaction context: the conversation's customer, plus their current
   // booking and/or current open order, so the model edits the real entity
@@ -475,6 +529,7 @@ export async function maybeAutoReply(args: {
       const created = await createOrder(admin, businessId, customerId, oa.items);
       if (created.ok) {
         bodyText = composeOrderSummary(created.order);
+        photosForOrderId = created.order.orderId;
         actionDecision = { kind: "order_proposal", finalOrderId: created.order.orderId, itemCount: created.order.lines.length, proposal: { action: "create_order", order_id: created.order.orderId, subtotal_kobo: created.order.subtotalKobo, lines: created.order.lines } };
       } else if (created.code === "order_exists") {
         bodyText = "You already have an open order: " + lineText(created.order) + " (total " + formatNairaFromKobo(created.order.subtotalKobo) + "). Would you like to add to it, or cancel it and start a new one?";
@@ -530,6 +585,7 @@ export async function maybeAutoReply(args: {
       } else if (oa.kind === "set_fulfillment") {
         if (!current.confirmedAt) {
           bodyText = composeOrderSummary(current);
+          photosForOrderId = current.orderId;
         } else {
           const wanted = oa.fulfillment === "pickup" ? "pickup" : "delivery";
           if (wanted === "pickup" && fulfillmentMode === "delivery") {
@@ -549,6 +605,7 @@ export async function maybeAutoReply(args: {
       } else if (oa.kind === "set_pickup_time") {
         if (!current.confirmedAt || current.fulfillmentType !== "pickup") {
           bodyText = composeOrderSummary(current);
+          photosForOrderId = current.orderId;
         } else if (!customerId) {
           bodyText = composePickupTimeQuestion(storeAddress);
         } else {
@@ -573,6 +630,7 @@ export async function maybeAutoReply(args: {
       } else if (oa.kind === "set_delivery_area") {
         if (!current.confirmedAt) {
           bodyText = composeOrderSummary(current);
+          photosForOrderId = current.orderId;
         } else {
           const res = await setDeliveryArea(admin, businessId, current.orderId, oa.area ?? "");
           if (res.ok) {
@@ -595,6 +653,7 @@ export async function maybeAutoReply(args: {
       } else if (oa.kind === "set_payment_method") {
         if (!current.confirmedAt) {
           bodyText = composeOrderSummary(current);
+          photosForOrderId = current.orderId;
         } else {
           const method = oa.payment_method === "on_delivery" ? "on_delivery" : oa.payment_method === "at_store" ? "at_store" : "online";
           const snap = await setPaymentMethod(admin, current.orderId, method);
@@ -647,6 +706,7 @@ export async function maybeAutoReply(args: {
             const removed = await removeItem(admin, businessId, current.orderId, fromItem.name);
             const snap = removed.ok ? removed.order : added.order;
             bodyText = composeOrderSummary(snap);
+            photosForOrderId = snap.orderId;
             actionDecision = { kind: "order_proposal", finalOrderId: snap.orderId, itemCount: snap.lines.length, proposal: { action: "replace_item", order_id: snap.orderId, subtotal_kobo: snap.subtotalKobo, lines: snap.lines } };
           }
         }
@@ -666,6 +726,7 @@ export async function maybeAutoReply(args: {
               actionDecision = { kind: "order_proposal", finalOrderId: res.order.orderId, itemCount: 0, proposal: { action: oa.kind, order_id: res.order.orderId } };
             } else {
               bodyText = composeOrderSummary(res.order);
+              photosForOrderId = res.order.orderId;
               actionDecision = { kind: "order_proposal", finalOrderId: res.order.orderId, itemCount: res.order.lines.length, proposal: { action: oa.kind, order_id: res.order.orderId, subtotal_kobo: res.order.subtotalKobo, lines: res.order.lines } };
             }
           } else if (res.code === "unresolved") {
@@ -687,6 +748,26 @@ export async function maybeAutoReply(args: {
           }
         }
       }
+    }
+  }
+
+  // Held-order presentation: send one photo per distinct product first, so the
+  // customer sees what they are buying at the decision moment. Best-effort and
+  // never blocks the text reply.
+  if (photosForOrderId) {
+    try {
+      const photos = await fetchOrderProductPhotos(admin, photosForOrderId);
+      for (const photo of photos) {
+        await sendWhatsAppImage({
+          phoneNumberId: channel.meta_phone_number_id,
+          accessToken: channel.access_token,
+          toE164,
+          imageUrl: photo.imageUrl,
+          caption: photo.caption,
+        });
+      }
+    } catch (e) {
+      console.warn("[ai/auto-reply] product photos failed", e);
     }
   }
 

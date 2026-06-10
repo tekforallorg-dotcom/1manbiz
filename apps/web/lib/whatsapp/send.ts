@@ -77,6 +77,61 @@ export async function sendWhatsAppText(params: {
 }
 
 /**
+ * Send an image by public URL with an optional caption. Used to show product
+ * photos to the customer at the order-confirmation moment. Best-effort shape
+ * mirrors sendWhatsAppText; the product-images bucket is public so Meta can
+ * fetch the link directly.
+ */
+export async function sendWhatsAppImage(params: {
+  phoneNumberId: string;
+  accessToken: string;
+  toE164: string;
+  imageUrl: string;
+  caption?: string;
+}): Promise<SendResult> {
+  const { phoneNumberId, accessToken, toE164, imageUrl, caption } = params;
+  const to = toE164.startsWith("+") ? toE164.slice(1) : toE164;
+  const url = "https://graph.facebook.com/" + META_GRAPH_VERSION + "/" + phoneNumberId + "/messages";
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + accessToken,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to,
+        type: "image",
+        image: caption ? { link: imageUrl, caption } : { link: imageUrl },
+      }),
+    });
+  } catch (e) {
+    console.error("[whatsapp/send] image network error", e);
+    const msg = e instanceof Error ? e.message : "Network error";
+    return { ok: false, error: msg };
+  }
+
+  let json: MetaTextResponse | null = null;
+  try {
+    json = await res.json();
+  } catch {
+    // Non-JSON, fall through.
+  }
+  if (!res.ok) {
+    const metaError = json?.error?.message ?? ("Meta API error " + res.status);
+    console.error("[whatsapp/send] image non-2xx", { status: res.status, json });
+    return { ok: false, error: metaError, status: res.status };
+  }
+  const wamid: string | undefined = json?.messages?.[0]?.id;
+  if (!wamid) return { ok: false, error: "Meta returned no message id" };
+  return { ok: true, wamid };
+}
+
+/**
  * Mark an inbound message as read and show a typing indicator in the chat
  * while we compose a reply. Best-effort: failures are logged, never thrown.
  * Meta clears the indicator when our reply lands (or after about 25 seconds).

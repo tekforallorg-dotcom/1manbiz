@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
       // Conversations that received a FRESH customer text in this delivery.
       // We auto-reply once per conversation after the message loop (batch-safe),
       // and only on fresh inserts so webhook retries never double-reply.
-      const autoReplyTargets = new Map<string, string>(); // conversationId -> toE164
+      const autoReplyTargets = new Map<string, { toE164: string; messageId: string | null }>(); // conversationId -> reply target
 
       // ----- Inbound messages -----
       const contactsByWaId = new Map<string, { name?: string }>();
@@ -392,7 +392,7 @@ export async function POST(request: NextRequest) {
           // Fresh inbound text -> eligible for an autonomous reply (one per
           // conversation; later messages in the same delivery just overwrite
           // the target, so we reply once with full context).
-          autoReplyTargets.set(conversationId, phoneE164);
+          autoReplyTargets.set(conversationId, { toE164: phoneE164, messageId: message.id ?? null });
         }
       }
 
@@ -402,14 +402,15 @@ export async function POST(request: NextRequest) {
       const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
       const proto = request.headers.get("x-forwarded-proto") ?? "https";
       const origin = host ? proto + "://" + host : "https://1manbiz.vercel.app";
-      for (const [convId, toE164] of autoReplyTargets) {
+      for (const [convId, target] of autoReplyTargets) {
         try {
           await maybeAutoReply({
             businessId,
             conversationId: convId,
             channelAccountId,
-            toE164,
+            toE164: target.toE164,
             origin,
+            inboundMessageId: target.messageId,
           });
         } catch (e) {
           console.error("[whatsapp-webhook] auto-reply threw", e);
