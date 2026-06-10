@@ -19,7 +19,7 @@ export interface OwnerChatTurn {
 export type OwnerActionDraft =
   | { kind: "set_stock"; product: string; variant?: string; value: number }
   | { kind: "set_price"; product: string; variant?: string; value: number }
-  | { kind: "add_product"; name: string; price: number; stock: number }
+  | { kind: "add_product"; name: string; price: number; stock: number; imagePath?: string }
   | { kind: "set_product_active"; product: string; active: boolean }
   | { kind: "mark_order_paid"; order: string }
   | { kind: "cancel_order"; order: string }
@@ -91,6 +91,61 @@ function parseAction(a: Record<string, unknown>): OwnerActionDraft | null {
     return { kind, title, content };
   }
   return null;
+}
+
+// Deterministic extraction of product fields from a free-text owner reply
+// during the photo-add flow. No model round-trip: we read a price (with k/m
+// suffixes and naira words), a stock count, and a fallback name. Kept simple
+// and predictable; the owner confirms the final summary before anything saves.
+export function extractProductFields(text: string): {
+  name: string | null;
+  priceNaira: number | null;
+  stock: number | null;
+} {
+  const raw = text.trim();
+  const lower = raw.toLowerCase();
+
+  // Price: "price 650000", "650k", "1.2m", "NGN 650,000", "650000 naira".
+  let priceNaira: number | null = null;
+  const priceLabelled = lower.match(/(?:price|cost|sell(?:s|ing)?(?:\s+for|\s+at)?|for|at|n|ngn|naira|#)\s*([0-9][0-9,\.]*)\s*([km])?/);
+  const priceLoose = lower.match(/\b([0-9][0-9,\.]*)\s*([km])\b/);
+  const pick = priceLabelled ?? priceLoose;
+  if (pick) {
+    const num = parseFloat((pick[1] ?? "").replace(/,/g, ""));
+    const suffix = pick[2];
+    if (Number.isFinite(num)) {
+      priceNaira = suffix === "k" ? num * 1000 : suffix === "m" ? num * 1000000 : num;
+    }
+  }
+
+  // Stock: "20 in stock", "stock 20", "qty 20", "x20", "20 units/pcs/pieces".
+  let stock: number | null = null;
+  const stockMatch =
+    lower.match(/(?:stock|qty|quantity|have|got|x)\s*[:=]?\s*([0-9]{1,6})\b/) ??
+    lower.match(/\b([0-9]{1,6})\s*(?:in\s*stock|units?|pcs|pieces|available)\b/);
+  if (stockMatch) {
+    const n = Number(stockMatch[1]);
+    if (Number.isFinite(n)) stock = n;
+  }
+
+  // Name: an explicit "name X" / "call it X" / "named X", else a line that is
+  // not obviously a number-only answer. Strip leading add verbs.
+  let name: string | null = null;
+  const nameLabelled = raw.match(/(?:name(?:d)?(?:\s+it)?|call(?:ed)?\s+it|its?\s+called)\s*[:\-]?\s*(.+)$/i);
+  if (nameLabelled) {
+    name = (nameLabelled[1] ?? "").trim();
+  } else if (!/^[\s0-9,\.kmnNG#x:=]+$/i.test(raw)) {
+    // Not a pure price/stock answer: treat the cleaned text as a candidate name.
+    const cleaned = raw
+      .replace(/\b(?:add|new|create|list|product|please|this|the|a|an|stock|price|cost|for|at|qty|quantity|units?|pcs|pieces|in)\b/gi, " ")
+      .replace(/\b[0-9][0-9,\.]*\s*[km]?\b/gi, " ")
+      .replace(/[#:=]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (cleaned.length >= 2 && cleaned.length <= 80) name = cleaned;
+  }
+
+  return { name: name || null, priceNaira, stock };
 }
 
 export async function draftOwnerReply(params: {

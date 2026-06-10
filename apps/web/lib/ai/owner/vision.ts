@@ -43,6 +43,46 @@ function safeJson(text: string): unknown {
   }
 }
 
+// Resolve a WhatsApp media id to raw bytes. Two calls: GET /{id} returns a
+// short-lived URL, which we then fetch with the same bearer token. Exported so
+// the owner router can reuse the exact same fetch to store a product photo,
+// rather than re-deriving the Graph shape.
+export async function downloadMediaBytes(
+  mediaId: string,
+  accessToken: string,
+): Promise<{ bytes: Uint8Array; mediaType: string } | null> {
+  try {
+    const metaRes = await fetch(GRAPH_BASE + "/" + encodeURIComponent(mediaId), {
+      headers: { Authorization: "Bearer " + accessToken },
+      cache: "no-store",
+    });
+    if (!metaRes.ok) {
+      console.error("[owner/vision] media meta failed", metaRes.status);
+      return null;
+    }
+    const meta = (await metaRes.json()) as { url?: string; mime_type?: string };
+    if (!meta.url) return null;
+    const binRes = await fetch(meta.url, {
+      headers: { Authorization: "Bearer " + accessToken },
+      cache: "no-store",
+    });
+    if (!binRes.ok) {
+      console.error("[owner/vision] media binary failed", binRes.status);
+      return null;
+    }
+    const buf = new Uint8Array(await binRes.arrayBuffer());
+    const mediaType = (meta.mime_type || binRes.headers.get("content-type") || "image/jpeg").split(";")[0] ?? "image/jpeg";
+    if (buf.byteLength > 4 * 1024 * 1024) {
+      console.warn("[owner/vision] media too large", buf.byteLength);
+      return null;
+    }
+    return { bytes: buf, mediaType };
+  } catch (e) {
+    console.error("[owner/vision] downloadMediaBytes threw", e);
+    return null;
+  }
+}
+
 // Resolve a WhatsApp media id to bytes, then base64. Two calls: GET /{id}
 // returns a short-lived URL, which we then fetch with the same bearer token.
 async function downloadMedia(

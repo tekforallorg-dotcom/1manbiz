@@ -161,6 +161,148 @@ export async function proposeStockFromVision(
   return proposeOwnerAction(admin, businessId, draft);
 }
 
+// ----- Photo-add product drafting -----
+// A 'drafting' owner_actions row holds a partial new product across turns. It
+// never executes; once name + price + stock are all known it is converted to a
+// normal add_product proposal (carrying the uploaded image_path) for the YES.
+
+export interface DraftProduct {
+  id: string;
+  imagePath: string | null;
+  name: string | null;
+  priceKobo: number | null;
+  stock: number | null;
+}
+
+const DRAFT_TTL_MS = 30 * 60 * 1000;
+
+function readDraft(row: Record<string, unknown>): DraftProduct {
+  const payload = (row.payload ?? {}) as Record<string, unknown>;
+  return {
+    id: row.id as string,
+    imagePath: (payload.image_path as string | undefined) ?? null,
+    name: (payload.name as string | undefined) ?? null,
+    priceKobo: typeof payload.price_kobo === "number" ? (payload.price_kobo as number) : null,
+    stock: typeof payload.stock === "number" ? (payload.stock as number) : null,
+  };
+}
+
+export async function findDraftProduct(
+  admin: AdminClient,
+  businessId: string,
+): Promise<DraftProduct | null> {
+  const { data } = await admin
+    .from("owner_actions")
+    .select("id, payload, created_at")
+    .eq("business_id", businessId)
+    .eq("kind", "add_product")
+    .eq("status", "drafting")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+  const row = data as Record<string, unknown>;
+  const age = Date.now() - new Date(row.created_at as string).getTime();
+  if (age > DRAFT_TTL_MS) {
+    await admin
+      .from("owner_actions")
+      .update({ status: "expired", resolved_at: new Date().toISOString() })
+      .eq("id", row.id as string);
+    return null;
+  }
+  return readDraft(row);
+}
+
+// Start (or restart) a photo-add draft. Any older drafting or proposed row is
+// retired first so there is never more than one thing in flight.
+export async function startDraftProduct(
+  admin: AdminClient,
+  businessId: string,
+  seed: { imagePath: string | null; name?: string | null },
+): Promise<DraftProduct | null> {
+  await admin
+    .from("owner_actions")
+    .update({ status: "expired", resolved_at: new Date().toISOString() })
+    .eq("business_id", businessId)
+    .in("status", ["drafting", "proposed"]);
+  const payload: Record<string, unknown> = {};
+  if (seed.imagePath) payload.image_path = seed.imagePath;
+  const cleanName = (seed.name ?? "").trim();
+  if (cleanName.length >= 2 && cleanName.length <= 80) payload.name = cleanName;
+  const { data, error } = await admin
+    .from("owner_actions")
+    .insert({ business_id: businessId, kind: "add_product", status: "drafting", payload, summary: "Drafting a new product" })
+    .select("id, payload, created_at")
+    .single();
+  if (error || !data) {
+    console.error("[owner/actions] start draft failed", error?.message);
+    return null;
+  }
+  return readDraft(data as Record<string, unknown>);
+}
+
+// Merge newly-extracted fields into the drafting row. Values are validated and
+// ignored when out of range so a stray number cannot poison the draft.
+export async function fillDraftProduct(
+  admin: AdminClient,
+  draft: DraftProduct,
+  fields: { name?: string | null; priceNaira?: number | null; stock?: number | null },
+): Promise<DraftProduct> {
+  const payload: Record<string, unknown> = {};
+  if (draft.imagePath) payload.image_path = draft.imagePath;
+  let name = draft.name;
+  let priceKobo = draft.priceKobo;
+  let stock = draft.stock;
+
+  const newName = (fields.name ?? "").trim();
+  if (newName.length >= 2 && newName.length <= 80) name = newName;
+  if (fields.priceNaira != null && fields.priceNaira >= 1 && fields.priceNaira <= MAX_PRICE_NAIRA) {
+    priceKobo = Math.floor(fields.priceNaira) * 100;
+  }
+  if (fields.stock != null && fields.stock >= 0 && fields.stock <= MAX_STOCK) {
+    stock = Math.floor(fields.stock);
+  }
+
+  if (name) payload.name = name;
+  if (priceKobo != null) payload.price_kobo = priceKobo;
+  if (stock != null) payload.stock = stock;
+
+  await admin.from("owner_actions").update({ payload }).eq("id", draft.id);
+  return { id: draft.id, imagePath: draft.imagePath, name, priceKobo, stock };
+}
+
+export async function cancelDraftProduct(admin: AdminClient, businessId: string): Promise<void> {
+  await admin
+    .from("owner_actions")
+    .update({ status: "cancelled", resolved_at: new Date().toISOString() })
+    .eq("business_id", businessId)
+    .eq("kind", "add_product")
+    .eq("status", "drafting");
+}
+
+// Convert a complete draft into a real add_product proposal (image carried).
+export async function proposeDraftProduct(
+  admin: AdminClient,
+  businessId: string,
+  draft: DraftProduct,
+): Promise<ProposeResult> {
+  if (!draft.name || draft.priceKobo == null || draft.stock == null) {
+    return { ok: false, message: "I still need the name, price, and stock for this product." };
+  }
+  await admin
+    .from("owner_actions")
+    .update({ status: "expired", resolved_at: new Date().toISOString() })
+    .eq("id", draft.id);
+  const proposeDraft: OwnerActionDraft = {
+    kind: "add_product",
+    name: draft.name,
+    price: Math.floor(draft.priceKobo / 100),
+    stock: draft.stock,
+    ...(draft.imagePath ? { imagePath: draft.imagePath } : {}),
+  };
+  return proposeOwnerAction(admin, businessId, proposeDraft);
+}
+
 // Dispatch the brain's draft to a per-kind proposer. Every proposer resolves
 // live entities server-side, validates bounds, and stores a proposal whose
 // summary is composed from the RESOLVED entities, never from model text, so
@@ -244,12 +386,15 @@ async function proposeAddProduct(
           : String(row.name) + " exists but is hidden. Say 'show " + String(row.name) + " again' to bring it back.",
     };
   }
+  const payload: Record<string, unknown> = { name, price_kobo: draft.price * 100, stock: draft.stock };
+  if (draft.imagePath) payload.image_path = draft.imagePath;
   return storeProposal(
     admin,
     businessId,
     draft.kind,
-    { name, price_kobo: draft.price * 100, stock: draft.stock },
-    "Add product " + name + " at " + formatNairaFromKobo(draft.price * 100) + " with " + String(draft.stock) + " in stock",
+    payload,
+    "Add product " + name + " at " + formatNairaFromKobo(draft.price * 100) + " with " + String(draft.stock) + " in stock" +
+      (draft.imagePath ? ", with the photo you sent" : ""),
   );
 }
 
@@ -512,13 +657,15 @@ export async function executePendingAction(
       if (error) return { ok: false, message: "Price update failed. Try again shortly." };
     }
   } else if (pending.kind === "add_product") {
-    const { error } = await admin.from("products").insert({
+    const insertRow: Record<string, unknown> = {
       business_id: businessId,
       name: pending.payload.name as string,
       price_kobo: Number(pending.payload.price_kobo),
       stock_quantity: Number(pending.payload.stock),
       status: "active",
-    });
+    };
+    if (pending.payload.image_path) insertRow.image_path = pending.payload.image_path as string;
+    const { error } = await admin.from("products").insert(insertRow);
     if (error) return { ok: false, message: "Could not add the product. Try again shortly." };
   } else if (pending.kind === "set_product_active") {
     const { error } = await admin

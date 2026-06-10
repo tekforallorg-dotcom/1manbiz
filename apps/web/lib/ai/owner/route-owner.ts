@@ -12,7 +12,7 @@ import { sendWhatsAppText, sendTypingIndicator } from "@/lib/whatsapp/send";
 import { buildOwnerContext, buildSetupBlock } from "@/lib/ai/owner/context";
 import { buildReplyCatalog } from "@/lib/ai/catalog";
 import { draftOwnerReply } from "@/lib/ai/owner/manage-reply";
-import { identifyProductFromMedia } from "@/lib/ai/owner/vision";
+import { identifyProductFromMedia, downloadMediaBytes } from "@/lib/ai/owner/vision";
 import {
   storeOwnerMessage,
   loadOwnerHistory,
@@ -21,7 +21,14 @@ import {
   findPendingAction,
   executePendingAction,
   cancelPendingAction,
+  findDraftProduct,
+  startDraftProduct,
+  fillDraftProduct,
+  cancelDraftProduct,
+  proposeDraftProduct,
+  type DraftProduct,
 } from "@/lib/ai/owner/owner-actions";
+import { extractProductFields } from "@/lib/ai/owner/manage-reply";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -56,6 +63,83 @@ function quantityFromText(text: string): number | null {
   if (!m) return null;
   const n = Number(m[1]);
   return Number.isFinite(n) ? n : null;
+}
+
+// Add-intent on a photo caption: the owner wants this picture to become a NEW
+// product, not to restock an existing one.
+function hasAddIntent(text: string): boolean {
+  return /\b(add|new|create|list|register|introduce)\b/i.test(text) ||
+    /\bstock\s+this\s+as\b/i.test(text);
+}
+
+// A clean product-name guess from an add caption: drop the add verbs and
+// filler so "Add this iPad Air white" -> "iPad Air white".
+function nameFromCaption(text: string): string | null {
+  const cleaned = text
+    .replace(/\b(?:add|new|create|list|register|introduce|product|please|this|that|the|a|an|as)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned.length >= 2 && cleaned.length <= 80 ? cleaned : null;
+}
+
+// What is still missing from a draft, phrased for the owner.
+function draftAsk(d: DraftProduct): string {
+  const missing: string[] = [];
+  if (!d.name) missing.push("the name");
+  if (d.priceKobo == null) missing.push("the price");
+  if (d.stock == null) missing.push("how many in stock");
+  const have: string[] = [];
+  if (d.name) have.push("name " + d.name);
+  if (d.priceKobo != null) have.push("price NGN " + Math.round(d.priceKobo / 100).toLocaleString("en-NG"));
+  if (d.stock != null) have.push(String(d.stock) + " in stock");
+  const sofar = have.length > 0 ? "Got " + have.join(", ") + ". " : "";
+  if (missing.length === 1) return sofar + "What is " + missing[0] + "?";
+  if (missing.length === 2) return sofar + "What is " + missing[0] + " and " + missing[1] + "?";
+  return "Adding a new product from your photo. What is the name, price, and how many in stock? For example: iPad Air, 650000, 5 in stock.";
+}
+
+// Upload product photo bytes via the service-role admin client (bypasses
+// storage RLS, same as every other admin write). Path mirrors the app
+// convention so the public URL resolves identically. Returns the path or null.
+async function storeOwnerPhoto(
+  admin: AdminClient,
+  accessToken: string,
+  mediaId: string,
+  businessId: string,
+): Promise<string | null> {
+  const media = await downloadMediaBytes(mediaId, accessToken);
+  if (!media) return null;
+  const ext = media.mediaType === "image/png" ? "png" : media.mediaType === "image/webp" ? "webp" : "jpg";
+  const path = businessId + "/" + String(Date.now()) + "-" + Math.random().toString(36).slice(2, 10) + "." + ext;
+  const { error } = await admin.storage
+    .from("product-images")
+    .upload(path, media.bytes, { contentType: media.mediaType, upsert: false });
+  if (error) {
+    console.error("[owner/route] product photo upload failed", error.message);
+    return null;
+  }
+  return path;
+}
+
+// Advance a photo-add draft with a free-text owner reply: extract fields, fill,
+// then either propose (when complete) or ask for what is still missing.
+async function advanceDraft(
+  admin: AdminClient,
+  businessId: string,
+  draft: DraftProduct,
+  text: string,
+  reply: (body: string) => Promise<void>,
+): Promise<void> {
+  const fields = extractProductFields(text);
+  const filled = await fillDraftProduct(admin, draft, fields);
+  if (filled.name && filled.priceKobo != null && filled.stock != null) {
+    const proposed = await proposeDraftProduct(admin, businessId, filled);
+    await reply(
+      proposed.ok ? proposed.summary + "?\nReply YES to confirm or NO to cancel." : proposed.message,
+    );
+    return;
+  }
+  await reply(draftAsk(filled));
 }
 
 async function loadChannel(
@@ -194,6 +278,25 @@ export async function handleOwnerMessage(
       await reply("I could not read that photo right now. Please type the change instead.");
       return;
     }
+
+    const addIntent = hasAddIntent(text);
+
+    // Add-a-new-product by photo: store the image, seed a draft (name guessed
+    // from the caption), and collect price + stock before anything saves.
+    if (addIntent) {
+      const storedPath = await storeOwnerPhoto(admin, channel.accessToken, imageMediaId, businessId);
+      const seededName = nameFromCaption(text);
+      const draft = await startDraftProduct(admin, businessId, { imagePath: storedPath, name: seededName });
+      if (!draft) {
+        await reply("I could not start that product right now. Try again shortly.");
+        return;
+      }
+      // The caption may already carry price or stock; fold them in immediately.
+      await advanceDraft(admin, businessId, draft, text, reply);
+      return;
+    }
+
+    // Otherwise: snap-to-restock against the existing catalog.
     const catalog = await buildReplyCatalog(businessId);
     const identified = await identifyProductFromMedia({
       apiKey,
@@ -203,7 +306,7 @@ export async function handleOwnerMessage(
     });
     if (!identified.ok) {
       await reply(
-        "I could not match that photo to a product. You can type the change instead, like 'restock iPhone 17 Pro 512GB Black to 10'.",
+        "I could not match that photo to a product. To restock, type it like 'restock iPhone 17 Pro 512GB Black to 10'. To add it as a new product, say 'add this' with the photo.",
       );
       return;
     }
@@ -231,6 +334,22 @@ export async function handleOwnerMessage(
 
   await storeOwnerMessage(admin, businessId, "in", text);
   const t = text.trim().toLowerCase();
+
+  // A photo-add draft in flight takes the next free-text replies as its
+  // answers, unless the owner types a control word (handled just below).
+  const CONTROL = new Set([
+    "unlink", "help", "menu", "setup", "pending", "status",
+    "yes", "y", "yeah", "yep", "yup", "yh", "ok", "okay", "okk", "sure", "confirm",
+    "confirmed", "proceed", "go", "do it", "send it", "approve", "approved",
+    "no", "n", "nope", "nah", "cancel", "stop", "abort", "discard", "never mind", "nevermind",
+  ]);
+  if (!CONTROL.has(t)) {
+    const draft = await findDraftProduct(admin, businessId);
+    if (draft) {
+      await advanceDraft(admin, businessId, draft, text, reply);
+      return;
+    }
+  }
 
   if (t === "unlink") {
     await admin
@@ -277,6 +396,12 @@ export async function handleOwnerMessage(
   }
 
   if (NO_WORDS.has(t)) {
+    const draft = await findDraftProduct(admin, businessId);
+    if (draft) {
+      await cancelDraftProduct(admin, businessId);
+      await reply("Cancelled. I dropped that new product.");
+      return;
+    }
     const cancelled = await cancelPendingAction(admin, businessId);
     await reply(cancelled ? "Cancelled. Nothing was changed." : "Nothing pending to cancel.");
     return;
