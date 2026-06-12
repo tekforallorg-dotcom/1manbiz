@@ -170,6 +170,22 @@ async function advanceDraft(
       return;
     }
   }
+  // A restock instruction (restock X to N, set stock of X to N) answered while
+  // a photo is held: resolve the product and propose a stock change, do not try
+  // to add it as a new product.
+  const restock = text
+    .trim()
+    .match(/^(?:restock|set\s+stock(?:\s+of)?|update\s+stock(?:\s+of)?)\s+(.+?)\s+(?:to\s+)?(\d{1,6})\s*$/i);
+  if (restock && restock[1] && restock[2]) {
+    await cancelDraftProduct(admin, businessId);
+    const proposed = await proposeOwnerAction(admin, businessId, {
+      kind: "set_stock",
+      product: restock[1].trim(),
+      value: Number(restock[2]),
+    });
+    await reply(proposed.ok ? proposed.summary + "?\nReply YES to confirm or NO to cancel." : proposed.message);
+    return;
+  }
   const fields = await extractProductFieldsAI({
     apiKey,
     latest: text,
@@ -374,7 +390,29 @@ export async function handleOwnerMessage(
       return;
     }
 
-    // Otherwise: snap-to-restock against the existing catalog.
+    // Option A: a bare photo (no caption) never guesses. Hold it and ask what
+    // to do, so a wrong vision match can never derail the owner. The next reply
+    // routes itself: a name and price adds it (photo attached), restock X to N
+    // restocks, new photo for X swaps a picture.
+    if (!text || !text.trim()) {
+      const storedPath = await storeOwnerPhoto(admin, channel.accessToken, imageMediaId, businessId);
+      const draft = storedPath
+        ? await startDraftProduct(admin, businessId, { imagePath: storedPath, name: null })
+        : null;
+      if (!draft) {
+        await reply("I could not save that photo right now. Try again shortly.");
+        return;
+      }
+      await reply(
+        "Got your photo. What would you like to do with it?\n" +
+          "- Add it as a new product: send a name and price, like iPhone 17 mini, 900000, 5 in stock\n" +
+          "- Restock something you already sell: say restock Samsung A56 to 10\n" +
+          "- Update a product photo: say new photo for Samsung A56",
+      );
+      return;
+    }
+
+    // A photo with a caption: snap-to-restock against the existing catalog.
     const catalog = await buildReplyCatalog(businessId);
     const identified = await identifyProductFromMedia({
       apiKey,
