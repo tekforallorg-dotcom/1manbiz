@@ -20,6 +20,7 @@ export type OwnerActionDraft =
   | { kind: "set_stock"; product: string; variant?: string; value: number }
   | { kind: "set_price"; product: string; variant?: string; value: number }
   | { kind: "add_product"; name: string; price: number; stock: number; imagePath?: string; axis?: string; variants?: DraftVariant[] }
+  | { kind: "set_product_photo"; product: string; imagePath: string }
   | { kind: "set_product_active"; product: string; active: boolean }
   | { kind: "mark_order_paid"; order: string }
   | { kind: "cancel_order"; order: string }

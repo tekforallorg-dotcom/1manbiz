@@ -292,6 +292,22 @@ export async function fillDraftProduct(
   return { id: draft.id, imagePath: draft.imagePath, name, priceKobo, stock, axis, variants };
 }
 
+// A retake: swap the draft photo while keeping every field already collected.
+export async function updateDraftImage(
+  admin: AdminClient,
+  draft: DraftProduct,
+  imagePath: string,
+): Promise<DraftProduct> {
+  const payload: Record<string, unknown> = { image_path: imagePath };
+  if (draft.name) payload.name = draft.name;
+  if (draft.priceKobo != null) payload.price_kobo = draft.priceKobo;
+  if (draft.stock != null) payload.stock = draft.stock;
+  if (draft.axis) payload.axis = draft.axis;
+  if (draft.variants) payload.variants = draft.variants;
+  await admin.from("owner_actions").update({ payload }).eq("id", draft.id);
+  return { ...draft, imagePath };
+}
+
 export async function cancelDraftProduct(admin: AdminClient, businessId: string): Promise<void> {
   await admin
     .from("owner_actions")
@@ -346,6 +362,8 @@ export async function proposeOwnerAction(
     case "mark_order_paid":
     case "cancel_order":
       return proposeOrderStatus(admin, businessId, draft);
+    case "set_product_photo":
+      return proposeSetProductPhoto(admin, businessId, draft);
     case "set_policy":
       return proposePolicy(admin, businessId, draft);
   }
@@ -427,6 +445,52 @@ async function proposeAddProduct(
     payload,
     "Add product " + name + " at " + formatNairaFromKobo(draft.price * 100) + variantSummary +
       (draft.imagePath ? ", with the photo you sent" : ""),
+  );
+}
+
+// Photo swap for an existing product. Resolves the product server-side (exact
+// name, then an unambiguous contains match) so YES updates exactly one row.
+async function proposeSetProductPhoto(
+  admin: AdminClient,
+  businessId: string,
+  draft: Extract<OwnerActionDraft, { kind: "set_product_photo" }>,
+): Promise<ProposeResult> {
+  const wanted = draft.product.trim();
+  if (!wanted || !draft.imagePath) {
+    return { ok: false, message: "Tell me which product the photo is for, like new photo for iPhone 17 Pro." };
+  }
+  let { data: rows } = await admin
+    .from("products")
+    .select("id, name")
+    .eq("business_id", businessId)
+    .ilike("name", wanted)
+    .limit(2);
+  if (!rows || rows.length === 0) {
+    const res = await admin
+      .from("products")
+      .select("id, name")
+      .eq("business_id", businessId)
+      .ilike("name", "%" + wanted + "%")
+      .limit(2);
+    rows = res.data;
+  }
+  const list = (rows ?? []) as Array<Record<string, unknown>>;
+  if (list.length === 0) {
+    return { ok: false, message: "I could not find " + wanted + " in the catalog. Which product is the photo for?" };
+  }
+  if (list.length > 1) {
+    return { ok: false, message: "I found more than one product matching " + wanted + ". Give me the exact name." };
+  }
+  const product = list[0];
+  if (!product) {
+    return { ok: false, message: "I could not find " + wanted + " in the catalog. Which product is the photo for?" };
+  }
+  return storeProposal(
+    admin,
+    businessId,
+    draft.kind,
+    { product_id: product.id as string, image_path: draft.imagePath },
+    "Use your new photo for " + String(product.name),
   );
 }
 
@@ -727,6 +791,13 @@ export async function executePendingAction(
       const { error } = await admin.from("products").insert(insertRow);
       if (error) return { ok: false, message: "Could not add the product. Try again shortly." };
     }
+  } else if (pending.kind === "set_product_photo") {
+    const { error } = await admin
+      .from("products")
+      .update({ image_path: pending.payload.image_path as string })
+      .eq("id", pending.payload.product_id as string)
+      .eq("business_id", businessId);
+    if (error) return { ok: false, message: "Could not update the photo. Try again shortly." };
   } else if (pending.kind === "set_product_active") {
     const { error } = await admin
       .from("products")

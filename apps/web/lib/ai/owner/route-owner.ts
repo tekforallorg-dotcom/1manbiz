@@ -22,6 +22,7 @@ import {
   executePendingAction,
   cancelPendingAction,
   findDraftProduct,
+  updateDraftImage,
   startDraftProduct,
   fillDraftProduct,
   cancelDraftProduct,
@@ -74,6 +75,27 @@ function hasAddIntent(text: string): boolean {
 
 // A clean product-name guess from an add caption: drop the add verbs and
 // filler so "Add this iPad Air white" -> "iPad Air white".
+// "new photo for iPhone 17 Pro" style captions and replies. Deterministic on
+// purpose so a photo swap never depends on a model call.
+function parsePhotoTarget(text: string): string | null {
+  const t = (text ?? "").trim().replace(/[.!?]+$/, "");
+  if (!t) return null;
+  const patterns = [
+    /^(?:this is\s+)?(?:the\s+|a\s+)?new\s+(?:photo|picture|pic|image)\s+(?:for|of)\s+(.+)$/i,
+    /^(?:use|set)\s+(?:this\s+)?(?:as\s+)?(?:the\s+)?(?:new\s+)?(?:photo|picture|pic|image)\s+(?:for|of)\s+(.+)$/i,
+    /^(?:change|update|replace)\s+(?:the\s+)?(?:photo|picture|pic|image)\s+(?:for|of)\s+(.+)$/i,
+    /^(?:change|update|replace)\s+(.+?)(?:'s)?\s+(?:photo|picture|pic|image)$/i,
+  ];
+  for (const re of patterns) {
+    const m = t.match(re);
+    if (m && m[1]) {
+      const name = m[1].trim();
+      if (name.length >= 2 && name.length <= 80) return name;
+    }
+  }
+  return null;
+}
+
 function nameFromCaption(text: string): string | null {
   const cleaned = text
     .replace(/\b(?:add|new|create|list|register|introduce|product|please|this|that|the|a|an|as)\b/gi, " ")
@@ -97,7 +119,7 @@ function draftAsk(d: DraftProduct): string {
   const sofar = have.length > 0 ? "Got " + have.join(", ") + ". " : "";
   if (missing.length === 1) return sofar + "What is " + missing[0] + "?";
   if (missing.length === 2) return sofar + "What is " + missing[0] + " and " + missing[1] + "?";
-  return "Adding a new product from your photo. What is the name, price, and how many in stock? For example: iPad Air, 650000, 5 in stock.";
+  return "Adding a new product from your photo. What is the name, price, and how many in stock? For example: iPad Air, 650000, 5 in stock, or with options: Samsung A76, 450000, 5 black and 3 white.";
 }
 
 // Upload product photo bytes via the service-role admin client (bypasses
@@ -133,6 +155,21 @@ async function advanceDraft(
   text: string,
   reply: (body: string) => Promise<void>,
 ): Promise<void> {
+  // "new photo for iPhone 17 Pro" while a photo is held: this is a photo swap
+  // for that product, not a new product.
+  if (draft.imagePath) {
+    const target = parsePhotoTarget(text);
+    if (target) {
+      await cancelDraftProduct(admin, businessId);
+      const proposed = await proposeOwnerAction(admin, businessId, {
+        kind: "set_product_photo",
+        product: target,
+        imagePath: draft.imagePath,
+      });
+      await reply(proposed.ok ? proposed.summary + "?\nReply YES to confirm or NO to cancel." : proposed.message);
+      return;
+    }
+  }
   const fields = await extractProductFieldsAI({
     apiKey,
     latest: text,
@@ -289,6 +326,25 @@ export async function handleOwnerMessage(
 
     const addIntent = hasAddIntent(text);
 
+    // Photo for an existing product: a caption like "new photo for iPhone 17
+    // Pro" proposes a photo swap on the usual YES rail.
+    const photoTarget = parsePhotoTarget(text);
+    if (photoTarget) {
+      const storedPath = await storeOwnerPhoto(admin, channel.accessToken, imageMediaId, businessId);
+      if (!storedPath) {
+        await reply("I could not save that photo right now. Try again shortly.");
+        return;
+      }
+      await cancelDraftProduct(admin, businessId);
+      const proposed = await proposeOwnerAction(admin, businessId, {
+        kind: "set_product_photo",
+        product: photoTarget,
+        imagePath: storedPath,
+      });
+      await reply(proposed.ok ? proposed.summary + "?\nReply YES to confirm or NO to cancel." : proposed.message);
+      return;
+    }
+
     // Add-a-new-product by photo: store the image, seed a draft (name guessed
     // from the caption), and collect price + stock before anything saves.
     if (addIntent) {
@@ -304,6 +360,20 @@ export async function handleOwnerMessage(
       return;
     }
 
+    // A new photo while a draft is open is a retake: swap the picture, keep
+    // everything already collected, and keep the conversation moving.
+    const activeDraft = await findDraftProduct(admin, businessId);
+    if (activeDraft) {
+      const storedPath = await storeOwnerPhoto(admin, channel.accessToken, imageMediaId, businessId);
+      const swapped = storedPath ? await updateDraftImage(admin, activeDraft, storedPath) : activeDraft;
+      if (text) {
+        await advanceDraft(admin, businessId, apiKey, swapped, text, reply);
+      } else {
+        await reply("Got your new photo for this product. " + draftAsk(swapped));
+      }
+      return;
+    }
+
     // Otherwise: snap-to-restock against the existing catalog.
     const catalog = await buildReplyCatalog(businessId);
     const identified = await identifyProductFromMedia({
@@ -313,8 +383,20 @@ export async function handleOwnerMessage(
       catalog,
     });
     if (!identified.ok) {
+      // Hold the photo and flow straight into the add-product draft instead of
+      // a dead end. The reply also names the photo-swap path.
+      const storedPath = await storeOwnerPhoto(admin, channel.accessToken, imageMediaId, businessId);
+      const seedName = text && /[a-z]/i.test(text) ? nameFromCaption(text) : null;
+      const draft = storedPath
+        ? await startDraftProduct(admin, businessId, { imagePath: storedPath, name: seedName })
+        : null;
+      if (!draft) {
+        await reply("I could not read that photo right now. Try again shortly.");
+        return;
+      }
       await reply(
-        "I could not match that photo to a product. To restock, type it like 'restock iPhone 17 Pro 512GB Black to 10'. To add it as a new product, say 'add this' with the photo.",
+        "I do not recognize that product. " + draftAsk(draft) +
+          " Or if it is a new photo for something I already sell, say so, like new photo for iPhone 17 Pro.",
       );
       return;
     }
