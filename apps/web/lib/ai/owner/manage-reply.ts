@@ -19,7 +19,7 @@ export interface OwnerChatTurn {
 export type OwnerActionDraft =
   | { kind: "set_stock"; product: string; variant?: string; value: number }
   | { kind: "set_price"; product: string; variant?: string; value: number }
-  | { kind: "add_product"; name: string; price: number; stock: number; imagePath?: string }
+  | { kind: "add_product"; name: string; price: number; stock: number; imagePath?: string; axis?: string; variants?: DraftVariant[] }
   | { kind: "set_product_active"; product: string; active: boolean }
   | { kind: "mark_order_paid"; order: string }
   | { kind: "cancel_order"; order: string }
@@ -97,10 +97,16 @@ function parseAction(a: Record<string, unknown>): OwnerActionDraft | null {
 // during the photo-add flow. No model round-trip: we read a price (with k/m
 // suffixes and naira words), a stock count, and a fallback name. Kept simple
 // and predictable; the owner confirms the final summary before anything saves.
+export interface DraftVariant {
+  label: string;
+  stock: number;
+}
 export interface ProductFields {
   name: string | null;
   priceNaira: number | null;
   stock: number | null;
+  axis: string | null;
+  variants: DraftVariant[] | null;
 }
 
 // Model-based extraction of product fields from a natural-language owner reply
@@ -112,6 +118,24 @@ export interface ProductFields {
 // still required, so the model can never set money or save on its own. Falls
 // back to the regex extractor if the call fails, so a hiccup never blocks the
 // draft.
+function parseExtractedVariants(raw: unknown): DraftVariant[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out: DraftVariant[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const label = typeof o.label === "string" ? o.label.trim() : "";
+    const stock =
+      typeof o.stock === "number" && Number.isFinite(o.stock) ? Math.floor(o.stock) : null;
+    if (label.length >= 1 && label.length <= 40 && stock != null && stock >= 0 && stock <= 100000) {
+      out.push({ label, stock });
+    }
+  }
+  const labels = new Set(out.map((v) => v.label.toLowerCase()));
+  if (out.length < 2 || labels.size !== out.length) return null;
+  return out;
+}
+
 export async function extractProductFieldsAI(params: {
   apiKey: string;
   latest: string;
@@ -132,8 +156,9 @@ export async function extractProductFieldsAI(params: {
     "- Only return a field if THIS message (or the known values) makes it clear. If a field is not " +
     "stated or you are unsure, return null for it. Never guess a price or a count.\n" +
     "- Do not invent a name. If the message is only a price or only a count, name is null.\n\n" +
+    "- VARIANTS: if the product comes in several of ONE kind of option (colours, sizes, storages) each with its own count, return them. axis = the option name (Color, Size, Storage). variants = a list of {label, stock}. 'black and white, 5 each' is axis Color, variants [{\"label\":\"Black\",\"stock\":5},{\"label\":\"White\",\"stock\":5}]; 'black 5, white 3' is [{\"label\":\"Black\",\"stock\":5},{\"label\":\"White\",\"stock\":3}]. Use ONE shared price_naira for them all. If there are no per-option counts, set axis and variants to null and use the single stock.\n" +
     "Respond with ONLY this JSON, no prose, no fences:\n" +
-    "{\"name\":<string or null>,\"price_naira\":<integer or null>,\"stock\":<integer or null>}";
+    "{\"name\":<string or null>,\"price_naira\":<integer or null>,\"stock\":<integer or null>,\"axis\":<string or null>,\"variants\":<list of {\"label\":string,\"stock\":integer} or null>}";
 
   const knownLines =
     "Known so far: name=" + (known.name ?? "unknown") +
@@ -171,7 +196,11 @@ export async function extractProductFieldsAI(params: {
         : null;
     const stock =
       typeof p.stock === "number" && Number.isFinite(p.stock) ? Math.floor(p.stock) : null;
-    return { name, priceNaira, stock };
+    const variants = parseExtractedVariants(p.variants);
+    const axis = variants
+      ? (typeof p.axis === "string" && p.axis.trim() ? p.axis.trim() : "Option")
+      : null;
+    return { name, priceNaira, stock, axis, variants };
   } catch (e) {
     console.warn("[owner/extract] threw, falling back", e);
     return extractProductFieldsRegex(latest);
@@ -179,11 +208,7 @@ export async function extractProductFieldsAI(params: {
 }
 
 // Deterministic fallback used only when the model call fails.
-export function extractProductFieldsRegex(text: string): {
-  name: string | null;
-  priceNaira: number | null;
-  stock: number | null;
-} {
+export function extractProductFieldsRegex(text: string): ProductFields {
   const raw = text.trim();
   const lower = raw.toLowerCase();
 
@@ -227,7 +252,7 @@ export function extractProductFieldsRegex(text: string): {
     if (cleaned.length >= 2 && cleaned.length <= 80) name = cleaned;
   }
 
-  return { name: name || null, priceNaira, stock };
+  return { name: name || null, priceNaira, stock, axis: null, variants: null };
 }
 
 export async function draftOwnerReply(params: {

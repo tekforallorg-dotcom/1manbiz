@@ -19,7 +19,7 @@ import {
   matchVariant,
   type ResolvedVariant,
 } from "@/lib/ai/actions/order-actions";
-import type { OwnerActionDraft, OwnerChatTurn } from "@/lib/ai/owner/manage-reply";
+import type { OwnerActionDraft, OwnerChatTurn, DraftVariant } from "@/lib/ai/owner/manage-reply";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -172,18 +172,30 @@ export interface DraftProduct {
   name: string | null;
   priceKobo: number | null;
   stock: number | null;
+  axis: string | null;
+  variants: DraftVariant[] | null;
 }
 
 const DRAFT_TTL_MS = 30 * 60 * 1000;
 
 function readDraft(row: Record<string, unknown>): DraftProduct {
   const payload = (row.payload ?? {}) as Record<string, unknown>;
+  const rawVariants = Array.isArray(payload.variants) ? (payload.variants as unknown[]) : null;
+  const variants = rawVariants
+    ? (rawVariants
+        .map((v) => (v && typeof v === "object" ? (v as Record<string, unknown>) : null))
+        .filter((v): v is Record<string, unknown> => v !== null)
+        .map((v) => ({ label: String(v.label ?? ""), stock: Number(v.stock ?? 0) }))
+        .filter((v) => v.label.length > 0) as DraftVariant[])
+    : null;
   return {
     id: row.id as string,
     imagePath: (payload.image_path as string | undefined) ?? null,
     name: (payload.name as string | undefined) ?? null,
     priceKobo: typeof payload.price_kobo === "number" ? (payload.price_kobo as number) : null,
     stock: typeof payload.stock === "number" ? (payload.stock as number) : null,
+    axis: (payload.axis as string | undefined) ?? null,
+    variants: variants && variants.length >= 2 ? variants : null,
   };
 }
 
@@ -246,29 +258,38 @@ export async function startDraftProduct(
 export async function fillDraftProduct(
   admin: AdminClient,
   draft: DraftProduct,
-  fields: { name?: string | null; priceNaira?: number | null; stock?: number | null },
+  fields: { name?: string | null; priceNaira?: number | null; stock?: number | null; axis?: string | null; variants?: DraftVariant[] | null },
 ): Promise<DraftProduct> {
   const payload: Record<string, unknown> = {};
   if (draft.imagePath) payload.image_path = draft.imagePath;
   let name = draft.name;
   let priceKobo = draft.priceKobo;
   let stock = draft.stock;
+  let axis = draft.axis;
+  let variants = draft.variants;
 
   const newName = (fields.name ?? "").trim();
   if (newName.length >= 2 && newName.length <= 80) name = newName;
   if (fields.priceNaira != null && fields.priceNaira >= 1 && fields.priceNaira <= MAX_PRICE_NAIRA) {
     priceKobo = Math.floor(fields.priceNaira) * 100;
   }
-  if (fields.stock != null && fields.stock >= 0 && fields.stock <= MAX_STOCK) {
+  if (fields.variants && fields.variants.length >= 2) {
+    variants = fields.variants.map((v) => ({ label: v.label, stock: Math.floor(v.stock) }));
+    axis = (fields.axis ?? draft.axis ?? "Option");
+    // Product stock is the sum of the variants.
+    stock = variants.reduce((sum, v) => sum + v.stock, 0);
+  } else if (fields.stock != null && fields.stock >= 0 && fields.stock <= MAX_STOCK) {
     stock = Math.floor(fields.stock);
   }
 
   if (name) payload.name = name;
   if (priceKobo != null) payload.price_kobo = priceKobo;
   if (stock != null) payload.stock = stock;
+  if (axis) payload.axis = axis;
+  if (variants) payload.variants = variants;
 
   await admin.from("owner_actions").update({ payload }).eq("id", draft.id);
-  return { id: draft.id, imagePath: draft.imagePath, name, priceKobo, stock };
+  return { id: draft.id, imagePath: draft.imagePath, name, priceKobo, stock, axis, variants };
 }
 
 export async function cancelDraftProduct(admin: AdminClient, businessId: string): Promise<void> {
@@ -286,7 +307,8 @@ export async function proposeDraftProduct(
   businessId: string,
   draft: DraftProduct,
 ): Promise<ProposeResult> {
-  if (!draft.name || draft.priceKobo == null || draft.stock == null) {
+  const hasVariants = draft.variants != null && draft.variants.length >= 2;
+  if (!draft.name || draft.priceKobo == null || (!hasVariants && draft.stock == null)) {
     return { ok: false, message: "I still need the name, price, and stock for this product." };
   }
   await admin
@@ -297,8 +319,9 @@ export async function proposeDraftProduct(
     kind: "add_product",
     name: draft.name,
     price: Math.floor(draft.priceKobo / 100),
-    stock: draft.stock,
+    stock: draft.stock ?? (draft.variants ?? []).reduce((s, v) => s + v.stock, 0),
     ...(draft.imagePath ? { imagePath: draft.imagePath } : {}),
+    ...(hasVariants ? { axis: draft.axis ?? "Option", variants: draft.variants ?? undefined } : {}),
   };
   return proposeOwnerAction(admin, businessId, proposeDraft);
 }
@@ -386,14 +409,23 @@ async function proposeAddProduct(
           : String(row.name) + " exists but is hidden. Say 'show " + String(row.name) + " again' to bring it back.",
     };
   }
-  const payload: Record<string, unknown> = { name, price_kobo: draft.price * 100, stock: draft.stock };
+  const variants = draft.variants && draft.variants.length >= 2 ? draft.variants : null;
+  const totalStock = variants ? variants.reduce((s, v) => s + v.stock, 0) : draft.stock;
+  const payload: Record<string, unknown> = { name, price_kobo: draft.price * 100, stock: totalStock };
   if (draft.imagePath) payload.image_path = draft.imagePath;
+  if (variants) {
+    payload.axis = draft.axis ?? "Option";
+    payload.variants = variants.map((v) => ({ label: v.label, stock: v.stock }));
+  }
+  const variantSummary = variants
+    ? " in " + variants.map((v) => v.label + " (" + String(v.stock) + ")").join(", ")
+    : " with " + String(totalStock) + " in stock";
   return storeProposal(
     admin,
     businessId,
     draft.kind,
     payload,
-    "Add product " + name + " at " + formatNairaFromKobo(draft.price * 100) + " with " + String(draft.stock) + " in stock" +
+    "Add product " + name + " at " + formatNairaFromKobo(draft.price * 100) + variantSummary +
       (draft.imagePath ? ", with the photo you sent" : ""),
   );
 }
@@ -665,8 +697,36 @@ export async function executePendingAction(
       status: "active",
     };
     if (pending.payload.image_path) insertRow.image_path = pending.payload.image_path as string;
-    const { error } = await admin.from("products").insert(insertRow);
-    if (error) return { ok: false, message: "Could not add the product. Try again shortly." };
+    const rawVariants = Array.isArray(pending.payload.variants)
+      ? (pending.payload.variants as Array<Record<string, unknown>>)
+      : null;
+    if (rawVariants && rawVariants.length >= 2) {
+      const { data: prod, error: prodErr } = await admin
+        .from("products")
+        .insert(insertRow)
+        .select("id")
+        .single();
+      if (prodErr || !prod) return { ok: false, message: "Could not add the product. Try again shortly." };
+      const newProductId = (prod as Record<string, unknown>).id as string;
+      const axis = (pending.payload.axis as string | undefined) ?? "Option";
+      const { error: optErr } = await admin
+        .from("product_options")
+        .insert({ business_id: businessId, product_id: newProductId, name: axis, position: 0 });
+      if (optErr) return { ok: false, message: "Added the product, but its options did not save. Edit it in the app." };
+      const variantRows = rawVariants.map((v) => ({
+        business_id: businessId,
+        product_id: newProductId,
+        label: String(v.label ?? ""),
+        option1: String(v.label ?? ""),
+        stock_quantity: Number(v.stock ?? 0),
+        is_active: true,
+      }));
+      const { error: varErr } = await admin.from("product_variants").insert(variantRows);
+      if (varErr) return { ok: false, message: "Added the product, but its variants did not save. Edit it in the app." };
+    } else {
+      const { error } = await admin.from("products").insert(insertRow);
+      if (error) return { ok: false, message: "Could not add the product. Try again shortly." };
+    }
   } else if (pending.kind === "set_product_active") {
     const { error } = await admin
       .from("products")

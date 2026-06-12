@@ -84,14 +84,16 @@ function nameFromCaption(text: string): string | null {
 
 // What is still missing from a draft, phrased for the owner.
 function draftAsk(d: DraftProduct): string {
+  const hasVariants = d.variants != null && d.variants.length >= 2;
   const missing: string[] = [];
   if (!d.name) missing.push("the name");
   if (d.priceKobo == null) missing.push("the price");
-  if (d.stock == null) missing.push("how many in stock");
+  if (!hasVariants && d.stock == null) missing.push("how many in stock");
   const have: string[] = [];
   if (d.name) have.push("name " + d.name);
   if (d.priceKobo != null) have.push("price NGN " + Math.round(d.priceKobo / 100).toLocaleString("en-NG"));
-  if (d.stock != null) have.push(String(d.stock) + " in stock");
+  if (hasVariants) have.push((d.variants ?? []).map((v) => v.label + " (" + String(v.stock) + ")").join(", "));
+  else if (d.stock != null) have.push(String(d.stock) + " in stock");
   const sofar = have.length > 0 ? "Got " + have.join(", ") + ". " : "";
   if (missing.length === 1) return sofar + "What is " + missing[0] + "?";
   if (missing.length === 2) return sofar + "What is " + missing[0] + " and " + missing[1] + "?";
@@ -137,7 +139,8 @@ async function advanceDraft(
     known: { name: draft.name, priceNaira: draft.priceKobo != null ? Math.round(draft.priceKobo / 100) : null, stock: draft.stock },
   });
   const filled = await fillDraftProduct(admin, draft, fields);
-  if (filled.name && filled.priceKobo != null && filled.stock != null) {
+  const hasVariants = filled.variants != null && filled.variants.length >= 2;
+  if (filled.name && filled.priceKobo != null && (hasVariants || filled.stock != null)) {
     const proposed = await proposeDraftProduct(admin, businessId, filled);
     await reply(
       proposed.ok ? proposed.summary + "?\nReply YES to confirm or NO to cancel." : proposed.message,
