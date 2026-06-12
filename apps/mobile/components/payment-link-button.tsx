@@ -12,7 +12,7 @@ type Props = {
   orderId: string;
   customerName: string | null;
   customerPhone: string | null;
-  subtotalKobo: number;
+  amountKobo: number;
 };
 
 // Resolve the customer's WhatsApp thread by phone. RLS scopes conversations to
@@ -29,7 +29,7 @@ async function resolveConversationId(phoneE164: string): Promise<string | null> 
   return data ? (data as { id: string }).id : null;
 }
 
-export function PaymentLinkButton({ orderId, customerName, customerPhone, subtotalKobo }: Props) {
+export function PaymentLinkButton({ orderId, customerName, customerPhone, amountKobo }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [payUrl, setPayUrl] = useState<string | null>(null);
@@ -41,7 +41,7 @@ export function PaymentLinkButton({ orderId, customerName, customerPhone, subtot
     const who = customerName ? "Hi " + customerName + ", " : "Hi, ";
     // Spell the currency in sent copy: the Naira glyph renders as a strikethrough
     // in some fonts (incl. ours), and we do not control WhatsApp's font.
-    const amount = "NGN " + Math.round(subtotalKobo / 100).toLocaleString("en-NG");
+    const amount = "NGN " + Math.round(amountKobo / 100).toLocaleString("en-NG");
     return who + "here is your secure payment link for " + amount + ": " + url;
   };
 

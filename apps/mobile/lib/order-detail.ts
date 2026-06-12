@@ -7,6 +7,7 @@ export type OrderSource = "manual" | "whatsapp" | "instagram" | "catalogue" | "w
 export interface OrderLineItem {
   id: string;
   name_snapshot: string;
+  variant_label_snapshot: string | null;
   price_kobo_snapshot: number;
   quantity: number;
   line_total_kobo: number;
@@ -41,7 +42,7 @@ export async function fetchOrderDetail(orderId: string): Promise<OrderDetail | n
       receipt_code, created_at, paid_at, cancelled_at,
       fulfillment_type, delivery_address, delivery_fee_kobo, pickup_at,
       customers(name, phone_e164),
-      order_items(id, name_snapshot, price_kobo_snapshot, quantity, line_total_kobo)
+      order_items(id, name_snapshot, variant_label_snapshot, price_kobo_snapshot, quantity, line_total_kobo)
     `)
     .eq("id", orderId)
     .maybeSingle();

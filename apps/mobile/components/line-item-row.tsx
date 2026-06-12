@@ -9,6 +9,11 @@ export function LineItemRow({ item }: { item: OrderLineItem }) {
         <Text className="text-text text-base font-medium" numberOfLines={2}>
           {item.name_snapshot}
         </Text>
+        {item.variant_label_snapshot ? (
+          <Text className="text-textMuted text-sm mt-0.5" numberOfLines={1}>
+            {item.variant_label_snapshot}
+          </Text>
+        ) : null}
         <Text className="text-textMuted text-xs mt-0.5">
           {item.quantity} {"×"} {formatNaira(item.price_kobo_snapshot)}
         </Text>

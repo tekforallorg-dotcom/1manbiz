@@ -106,7 +106,7 @@ export default function OrderDetailScreen() {
     if (!order?.receipt_code) return;
     const link = `${WEB_BASE}/r/${order.receipt_code}`;
     const who = order.customer_name ? "Hi " + order.customer_name + ", " : "";
-    const amount = "NGN " + Math.round(order.subtotal_kobo / 100).toLocaleString("en-NG");
+    const amount = "NGN " + Math.round((order.subtotal_kobo + (order.delivery_fee_kobo ?? 0)) / 100).toLocaleString("en-NG");
     try {
       await Share.share({ message: who + "here is your receipt for " + amount + ": " + link });
     } catch {
@@ -260,7 +260,7 @@ export default function OrderDetailScreen() {
               orderId={order.id}
               customerName={order.customer_name}
               customerPhone={order.customer_phone}
-              subtotalKobo={order.subtotal_kobo}
+              amountKobo={totalKobo}
             />
           <Pressable
             onPress={() => setConfirmingPaid(true)}
@@ -312,7 +312,7 @@ export default function OrderDetailScreen() {
         title="Mark as paid?"
         body={
           order
-            ? "Confirm that " + (order.customer_name ?? "the customer") + " has paid " + formatNaira(order.subtotal_kobo) + "."
+            ? "Confirm that " + (order.customer_name ?? "the customer") + " has paid " + formatNaira(totalKobo) + "."
             : undefined
         }
         confirmLabel="Mark as paid"
