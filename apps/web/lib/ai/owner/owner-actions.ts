@@ -711,7 +711,7 @@ export async function executePendingAction(
       const axis = (pending.payload.axis as string | undefined) ?? "Option";
       const { error: optErr } = await admin
         .from("product_options")
-        .insert({ business_id: businessId, product_id: newProductId, name: axis, position: 0 });
+        .insert({ business_id: businessId, product_id: newProductId, name: axis, position: 1 });
       if (optErr) return { ok: false, message: "Added the product, but its options did not save. Edit it in the app." };
       const variantRows = rawVariants.map((v) => ({
         business_id: businessId,
