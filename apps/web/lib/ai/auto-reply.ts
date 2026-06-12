@@ -630,12 +630,14 @@ export async function maybeAutoReply(args: {
       } else if (oa.kind === "cancel") {
         const cancelled = await cancelOrder(admin, current.orderId);
         if (cancelled.ok) {
-          bodyText = "Done. I have cancelled your order. Let us know if you would like to start a new one.";
+          bodyText = "Done, your cart is now empty. Let us know if you would like to start a new one.";
           actionDecision = { kind: "order_proposal", finalOrderId: current.orderId, itemCount: 0, proposal: { action: "cancel_order", order_id: current.orderId } };
         } else {
           console.warn("[ai/auto-reply] order cancel failed", cancelled.error);
           bodyText = "I could not cancel that order. Please try again shortly.";
         }
+      } else if (oa.kind === "show_cart") {
+        bodyText = composeOrderSummary(current);
       } else if (oa.kind === "confirm") {
         if (!aiSendsPaymentLink) {
           bodyText = composeOrderConfirmed(current);

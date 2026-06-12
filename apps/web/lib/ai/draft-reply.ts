@@ -58,7 +58,7 @@ export interface OrderActionItem {
 export interface OrderAction {
   kind:
     | "create" | "add_item" | "remove_item" | "set_quantity" | "replace_item"
-    | "cancel" | "confirm" | "decline"
+    | "cancel" | "confirm" | "decline" | "show_cart"
     | "set_fulfillment" | "set_delivery_area" | "set_payment_method" | "set_pickup_time";
   items: OrderActionItem[];
   fulfillment?: "delivery" | "pickup";
@@ -185,6 +185,7 @@ export async function draftReply(args: {
       "    If the customer confirms the whole cart or says that is all (confirm, that is all, done, looks good, go ahead with the order): action 'confirm'.\n" +
       "    If the customer declines or defers the whole order (no thanks, not now, maybe later, another time): action 'decline'. A bare 'no' right after a cart summary means decline, never confirm. Do NOT re-show the cart and do NOT ask again.\n" +
       "    To cancel or clear the cart (cancel, clear cart, empty cart, start over, remove everything): action 'cancel'.\n" +
+      "    If the customer asks what is in their cart (what is in my cart, show my cart, what did I order, my cart): action 'show_cart' and change nothing; the shop sends the current cart.\n" +
       "    If a current cart exists and the customer asks to start a separate new order: action 'none'; offer to add to their current cart or clear it first, and ask which.\n" +
       "    Never say the order is placed or paid; the shop owner sends the payment link.\n"
     : "- order intent: confirm item, quantity, and line total from CATALOG, and ask for delivery area or name if missing. Do NOT say the order is placed; the shop owner sends the payment link.\n";
@@ -214,9 +215,9 @@ export async function draftReply(args: {
     ? '"booking":{"action":"none|create|edit|cancel|confirm|decline","starts_at":"YYYY-MM-DDTHH:MM","title":"<short label>"},'
     : "";
   const orderActionEnum = aiSendsPaymentLink
-    ? "none|create|add_item|remove_item|set_quantity|replace_item|cancel|confirm|decline|set_fulfillment|set_delivery_area|set_payment_method" +
+    ? "none|create|add_item|remove_item|set_quantity|replace_item|cancel|confirm|decline|show_cart|set_fulfillment|set_delivery_area|set_payment_method" +
       (offersBookings ? "|set_pickup_time" : "")
-    : "none|create|add_item|remove_item|set_quantity|replace_item|cancel|confirm|decline";
+    : "none|create|add_item|remove_item|set_quantity|replace_item|cancel|confirm|decline|show_cart";
   const orderFulfillmentFields = aiSendsPaymentLink
     ? ',"fulfillment":"delivery|pickup","area":"<delivery area>","payment_method":"online|on_delivery|at_store"' +
       (offersBookings ? ',"pickup_at":"YYYY-MM-DDTHH:MM"' : "")
@@ -411,7 +412,9 @@ export async function draftReply(args: {
         items.push(variant ? { name: nm, qty, variant } : { name: nm, qty });
       }
       const first = items.length > 0 ? items[0] : undefined;
-      if (action === "cancel") {
+      if (action === "show_cart") {
+        orderAction = { kind: "show_cart", items: [] };
+      } else if (action === "cancel") {
         orderAction = { kind: "cancel", items: [] };
       } else if (action === "confirm") {
         orderAction = { kind: "confirm", items: [] };
