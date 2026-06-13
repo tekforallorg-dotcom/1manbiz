@@ -43,10 +43,12 @@ export function OrderList({ orders }: { orders: OrderRow[] }) {
       {orders.map((o) => {
         const customerName = o.customer?.name ?? "Unknown customer";
         const itemLabel = o.item_count === 1 ? "1 item" : o.item_count + " items";
+        const initial = customerName.charAt(0).toUpperCase();
         const href = "/dashboard/orders/" + o.id;
         return (
           <li key={o.id}>
-            <Link href={href} className="group flex items-center gap-4 rounded-2xl bg-white p-4 ring-1 ring-black/[0.04] transition-all duration-200 hover:shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)] hover:ring-black/[0.08] sm:gap-5 sm:p-5">
+            <Link href={href} className="group flex items-center gap-4 rounded-2xl bg-white p-4 ring-1 ring-black/[0.04] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_24px_-16px_rgba(0,0,0,0.12)] hover:ring-black/[0.08] sm:gap-5 sm:p-5">
+              <div className="grid size-11 shrink-0 place-items-center rounded-full bg-surface-muted text-sm font-medium text-text-secondary">{initial}</div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <p className="truncate font-medium text-foreground">{customerName}</p>
