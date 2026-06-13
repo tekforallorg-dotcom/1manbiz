@@ -2,7 +2,7 @@ import Link from "next/link";
 import { MessageCircle } from "lucide-react";
 
 import { formatNairaFromKobo } from "@/lib/format";
-import { buildWhatsAppLink } from "@/lib/whatsapp";
+import { buildWhatsAppAppLink } from "@/lib/whatsapp";
 
 type Customer = {
   id: string;
@@ -26,7 +26,7 @@ export function CustomerList({ customers }: { customers: Customer[] }) {
   return (
     <ul className="space-y-2">
       {customers.map((c) => {
-        const whatsappLink = buildWhatsAppLink(c.phone_e164, "Hi " + c.name + ", ");
+        const whatsappLink = buildWhatsAppAppLink(c.phone_e164, "Hi " + c.name + ", ");
         const initial = c.name.charAt(0).toUpperCase();
         const orderLabel = c.total_orders === 0 ? "No orders yet" : c.total_orders + " order" + (c.total_orders === 1 ? "" : "s");
         return (
@@ -46,7 +46,7 @@ export function CustomerList({ customers }: { customers: Customer[] }) {
                 </div>
               </Link>
               {whatsappLink ? (
-                <a href={whatsappLink} target="_blank" rel="noopener noreferrer" aria-label={"Chat with " + c.name + " on WhatsApp"} className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-foreground/90">
+                <a href={whatsappLink} aria-label={"Chat with " + c.name + " on WhatsApp"} className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-foreground/90">
                   <MessageCircle size={12} strokeWidth={2.25} />
                   <span className="hidden sm:inline">Chat</span>
                 </a>

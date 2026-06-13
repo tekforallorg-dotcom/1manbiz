@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Check, Copy, ExternalLink, MessageCircle, Send } from "lucide-react";
 
 import { buildReceiptPath, buildReceiptWhatsAppMessage } from "@/lib/receipt";
-import { buildWhatsAppLink } from "@/lib/whatsapp";
+import { buildWhatsAppAppLink } from "@/lib/whatsapp";
 
 type Props = {
   orderId: string;
@@ -42,7 +42,7 @@ export function ReceiptActions(props: Props) {
     }, 1800);
   }
 
-  const whatsappLink = buildWhatsAppLink(
+  const whatsappLink = buildWhatsAppAppLink(
     customerPhone,
     buildReceiptWhatsAppMessage({ businessName, customerName, receiptUrl: fullUrl }),
   );
@@ -130,8 +130,6 @@ export function ReceiptActions(props: Props) {
         {whatsappLink ? (
           <a
             href={whatsappLink}
-            target="_blank"
-            rel="noopener noreferrer"
             className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-white/15"
           >
             <MessageCircle size={14} strokeWidth={2.25} />

@@ -26,3 +26,20 @@ export function buildWhatsAppLink(
   if (!normalized || normalized.length < 10) return null;
   return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
 }
+
+/**
+ * Build a deep link that opens the installed WhatsApp app (desktop or mobile)
+ * straight to the chat, instead of the wa.me web interstitial that lands on
+ * web.whatsapp.com. Use this for owner-facing chat actions in the dashboard,
+ * where WhatsApp is always installed. Keep buildWhatsAppLink (wa.me) for the
+ * public catalogue, where a customer may be on a device without the app and
+ * needs the web fallback. Returns null if the phone is missing or invalid.
+ */
+export function buildWhatsAppAppLink(
+  phone: string | null | undefined,
+  message: string,
+): string | null {
+  const normalized = normalizePhone(phone);
+  if (!normalized || normalized.length < 10) return null;
+  return `whatsapp://send?phone=${normalized}&text=${encodeURIComponent(message)}`;
+}

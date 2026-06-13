@@ -4,7 +4,7 @@ import { ArrowLeft, MessageCircle, Phone, ChevronRight, Users } from "lucide-rea
 
 import { createClient } from "@/lib/supabase/server";
 import { formatNairaFromKobo } from "@/lib/format";
-import { buildWhatsAppLink } from "@/lib/whatsapp";
+import { buildWhatsAppAppLink } from "@/lib/whatsapp";
 
 import { EditCustomer } from "./edit-customer";
 
@@ -140,8 +140,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
   const messageHref = convoId
     ? "/dashboard/conversations/" + convoId
-    : buildWhatsAppLink(phone, "Hi " + name + ", ");
-  const messageExternal = !convoId;
+    : buildWhatsAppAppLink(phone, "Hi " + name + ", ");
   const callHref = phone ? "tel:+" + phone : null;
 
   return (
@@ -179,7 +178,6 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           {messageHref ? (
             <a
               href={messageHref}
-              {...(messageExternal ? { target: "_blank", rel: "noopener noreferrer" } : {})}
               className="inline-flex items-center gap-2 rounded-full bg-foreground px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-foreground/90"
             >
               <MessageCircle size={15} strokeWidth={2.25} />

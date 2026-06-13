@@ -4,7 +4,7 @@ import { ArrowLeft, MessageCircle } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { formatNairaFromKobo } from "@/lib/format";
-import { buildWhatsAppLink } from "@/lib/whatsapp";
+import { buildWhatsAppAppLink } from "@/lib/whatsapp";
 
 import { OrderActionsBar } from "./order-actions-bar";
 import { CancelPaidOrder } from "./cancel-paid-order";
@@ -78,7 +78,7 @@ export default async function OrderDetailPage(props: { params: Promise<{ id: str
   }
 
   const whatsappLink = customerPhone
-    ? buildWhatsAppLink(customerPhone, "Hi " + customerName + ", regarding your order: ")
+    ? buildWhatsAppAppLink(customerPhone, "Hi " + customerName + ", regarding your order: ")
     : null;
 
   return (
@@ -113,7 +113,7 @@ export default async function OrderDetailPage(props: { params: Promise<{ id: str
                 Chat
               </Link>
             ) : whatsappLink ? (
-              <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-foreground/90">
+              <a href={whatsappLink} className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-foreground/90">
                 <MessageCircle size={12} strokeWidth={2.25} />
                 Chat
               </a>
