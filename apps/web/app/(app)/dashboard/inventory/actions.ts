@@ -11,6 +11,8 @@ export type CreateProductState = {
   fieldErrors?: Record<string, string>;
 };
 
+const VARIANT_MAX_STOCK = 1000000;
+
 export async function createProductAction(
   _prev: CreateProductState,
   formData: FormData,
@@ -43,15 +45,14 @@ export async function createProductAction(
   const sku = String(formData.get("sku") ?? "").trim() || null;
   const description = String(formData.get("description") ?? "").trim() || null;
   const priceInput = String(formData.get("price_naira") ?? "").trim();
-  const stockInput = String(formData.get("stock_quantity") ?? "0").trim();
   const imagePathRaw = String(formData.get("image_path") ?? "").trim();
   const imagePath = imagePathRaw.length > 0 ? imagePathRaw : null;
+  const hasVariants = String(formData.get("has_variants") ?? "") === "1";
 
   // Validate
   const fieldErrors: Record<string, string> = {};
   if (!name) fieldErrors.name = "Product name is required";
-  else if (name.length > 120)
-    fieldErrors.name = "Name is too long (max 120 characters)";
+  else if (name.length > 120) fieldErrors.name = "Name is too long (max 120 characters)";
 
   const priceKobo = parseNairaInputToKobo(priceInput);
   if (!priceInput) {
@@ -60,29 +61,124 @@ export async function createProductAction(
     fieldErrors.price_naira = "Enter a valid price";
   }
 
-  const stockQty = Number.parseInt(stockInput, 10);
-  if (Number.isNaN(stockQty) || stockQty < 0) {
-    fieldErrors.stock_quantity = "Stock must be 0 or more";
+  // Single-axis variants (mirrors the WhatsApp add-product model): one option,
+  // two or more values, each with its own stock. Variants inherit the base
+  // price; product stock is the sum of the variant stocks.
+  let optionName = "";
+  let variantRows: { label: string; stock: number }[] = [];
+  let stockQty = 0;
+
+  if (hasVariants) {
+    optionName = String(formData.get("option_name") ?? "").trim();
+    if (!optionName) fieldErrors.option_name = "Name this option (e.g. Color)";
+    else if (optionName.length > 40) fieldErrors.option_name = "Option name is too long (max 40)";
+
+    let parsed: unknown = [];
+    try {
+      parsed = JSON.parse(String(formData.get("variants_json") ?? "[]"));
+    } catch {
+      parsed = [];
+    }
+    const cleaned = (Array.isArray(parsed) ? parsed : [])
+      .map((r) => {
+        const row = (r ?? {}) as Record<string, unknown>;
+        return { label: String(row.label ?? "").trim(), stock: Number(row.stock ?? 0) };
+      })
+      .filter((r) => r.label.length > 0);
+
+    const seen = new Set<string>();
+    let duplicate = false;
+    for (const r of cleaned) {
+      const key = r.label.toLowerCase();
+      if (seen.has(key)) duplicate = true;
+      seen.add(key);
+    }
+
+    if (cleaned.length < 2) {
+      fieldErrors.variants = "Add at least two values (for example Black and White).";
+    } else if (duplicate) {
+      fieldErrors.variants = "Option values must be unique.";
+    } else if (cleaned.some((r) => r.label.length > 60)) {
+      fieldErrors.variants = "An option value is too long (max 60 characters).";
+    } else if (cleaned.some((r) => !Number.isInteger(r.stock) || r.stock < 0 || r.stock > VARIANT_MAX_STOCK)) {
+      fieldErrors.variants = "Each value's stock must be a whole number from 0 to 1,000,000.";
+    } else {
+      variantRows = cleaned;
+    }
+  } else {
+    const stockInput = String(formData.get("stock_quantity") ?? "0").trim();
+    stockQty = Number.parseInt(stockInput, 10);
+    if (Number.isNaN(stockQty) || stockQty < 0) {
+      fieldErrors.stock_quantity = "Stock must be 0 or more";
+    }
   }
 
   if (Object.keys(fieldErrors).length > 0) {
     return { error: "Please fix the highlighted fields.", fieldErrors };
   }
 
-  // Insert (RLS enforces business_id ownership via products_insert_by_owner)
-  const { error: insertError } = await supabase.from("products").insert({
-    business_id: business.id,
-    name,
-    sku,
-    description,
-    price_kobo: priceKobo,
-    stock_quantity: stockQty,
-    image_path: imagePath,
-  });
+  if (hasVariants) {
+    // Insert product (stock = sum of variant stocks), then the option, then the
+    // variants. RLS enforces owner scope on every table.
+    const totalStock = variantRows.reduce((sum, r) => sum + r.stock, 0);
+    const { data: prod, error: prodErr } = await supabase
+      .from("products")
+      .insert({
+        business_id: business.id,
+        name,
+        sku,
+        description,
+        price_kobo: priceKobo,
+        stock_quantity: totalStock,
+        image_path: imagePath,
+      })
+      .select("id")
+      .single();
 
-  if (insertError) {
-    console.error("[inventory] insert product failed", insertError);
-    return { error: `Failed to add product: ${insertError.message}` };
+    if (prodErr || !prod) {
+      console.error("[inventory] insert product (with variants) failed", prodErr);
+      return { error: `Failed to add product: ${prodErr?.message ?? "unknown error"}` };
+    }
+    const newProductId = (prod as { id: string }).id;
+
+    const { error: optErr } = await supabase
+      .from("product_options")
+      .insert({ business_id: business.id, product_id: newProductId, name: optionName, position: 1 });
+    if (optErr) {
+      console.error("[inventory] insert product option failed", optErr);
+      return { error: "Added the product, but its option did not save. You can add it from the product page." };
+    }
+
+    const { error: varErr } = await supabase.from("product_variants").insert(
+      variantRows.map((r) => ({
+        business_id: business.id,
+        product_id: newProductId,
+        label: r.label,
+        option1: r.label,
+        stock_quantity: r.stock,
+        is_active: true,
+      })),
+    );
+    if (varErr) {
+      console.error("[inventory] insert product variants failed", varErr);
+      return { error: "Added the product, but its variants did not save. You can add them from the product page." };
+    }
+  } else {
+    // RLS enforces business_id ownership via products_insert_by_owner
+    const { error: insertError } = await supabase.from("products").insert({
+      business_id: business.id,
+      name,
+      sku,
+      description,
+      price_kobo: priceKobo,
+      stock_quantity: stockQty,
+      image_path: imagePath,
+    });
+
+    if (insertError) {
+      console.error("[inventory] insert product failed", insertError);
+      return { error: `Failed to add product: ${insertError.message}` };
+    }
   }
 
   revalidatePath("/dashboard/inventory");
@@ -133,8 +229,7 @@ export async function updateProductAction(
 
   const fieldErrors: Record<string, string> = {};
   if (!name) fieldErrors.name = "Product name is required";
-  else if (name.length > 120)
-    fieldErrors.name = "Name is too long (max 120 characters)";
+  else if (name.length > 120) fieldErrors.name = "Name is too long (max 120 characters)";
 
   const priceKobo = parseNairaInputToKobo(priceInput);
   if (!priceInput) {

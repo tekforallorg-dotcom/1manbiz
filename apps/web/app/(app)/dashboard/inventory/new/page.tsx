@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Package } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { ProductForm } from "./product-form";
@@ -24,7 +24,7 @@ export default async function NewProductPage() {
   if (!business) redirect("/onboarding");
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
+    <div className="mx-auto max-w-5xl space-y-6">
       <div>
         <Link
           href="/dashboard/inventory"
@@ -34,12 +34,15 @@ export default async function NewProductPage() {
           Back to inventory
         </Link>
 
-        <h1 className="mt-4 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-          Add product
-        </h1>
-        <p className="mt-1 text-sm text-text-secondary">
-          New item for {business.name}.
-        </p>
+        <div className="mt-4 flex items-center gap-4">
+          <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(135deg,#16A34A_0%,#15803D_55%,#064E3B_100%)] text-white shadow-[0_12px_28px_-16px_rgba(6,78,59,0.6)]">
+            <Package size={20} strokeWidth={2} />
+          </div>
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Add product</h1>
+            <p className="mt-1 text-sm text-text-secondary">New item for {business.name}.</p>
+          </div>
+        </div>
       </div>
 
       <ProductForm businessId={business.id} />
