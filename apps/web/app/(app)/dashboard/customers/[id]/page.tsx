@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { formatNairaFromKobo } from "@/lib/format";
 import { buildWhatsAppLink } from "@/lib/whatsapp";
 
+import { EditCustomer } from "./edit-customer";
+
 export const dynamic = "force-dynamic";
 
 type OrderItemSnap = { name_snapshot: string | null; quantity: number | null };
@@ -154,7 +156,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         </Link>
       </div>
 
-      <section className="rounded-3xl bg-white p-5 ring-1 ring-black/[0.04] sm:p-6">
+      <section className="relative rounded-3xl bg-white p-5 ring-1 ring-black/[0.04] sm:p-6">
         <div className="flex items-center gap-4">
           <div className="grid size-14 shrink-0 place-items-center rounded-full bg-brand-soft text-base font-semibold text-brand-primary">
             {initials(name)}
@@ -194,6 +196,8 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
             </a>
           ) : null}
         </div>
+
+        <EditCustomer customerId={customer.id} initialName={name} initialNotes={notes ?? ""} />
       </section>
 
       <section className="grid grid-cols-2 gap-3 sm:gap-4">
