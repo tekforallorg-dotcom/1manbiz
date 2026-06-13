@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 
 import { KnowledgeManager, type KnowledgeItem } from "./knowledge-manager";
 import { DeliveryZonesManager, type DeliveryZone } from "./delivery-zones-manager";
+import { AiBehaviorCard } from "./ai-behavior-card";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export default async function BizBotPage() {
 
   const { data: business } = await supabase
     .from("businesses")
-    .select("id, name")
+    .select("id, name, ai_mode, ai_tone, ai_language, ai_sends_payment_link")
     .eq("owner_id", user.id)
     .maybeSingle();
   if (!business) redirect("/onboarding");
@@ -60,6 +61,24 @@ export default async function BizBotPage() {
           Teach BizBot how to answer your customers. It replies automatically on WhatsApp.
         </p>
       </header>
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-[0.08em] text-text-muted">
+            BizBot mode
+          </h2>
+          <p className="mt-1 text-sm text-text-secondary">
+            How much BizBot does on its own, how it sounds, and the language it replies in.
+          </p>
+        </div>
+
+        <AiBehaviorCard
+          initialMode={(business.ai_mode as "off" | "assisted" | "semi" | "autonomous" | null) ?? "assisted"}
+          initialTone={(business.ai_tone as "friendly" | "formal" | "playful" | null) ?? "friendly"}
+          initialLanguage={(business.ai_language as string | null) ?? "English"}
+          initialAutopay={Boolean(business.ai_sends_payment_link)}
+        />
+      </section>
 
       <section className="space-y-4">
         <div>

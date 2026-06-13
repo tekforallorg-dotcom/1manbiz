@@ -257,3 +257,68 @@ export async function archiveDeliveryZone(id: string): Promise<DeliveryActionRes
   revalidatePath("/dashboard/bizbot");
   return { ok: true };
 }
+
+// --- AI behaviour ---
+
+export type AiBehaviorActionResult = { ok: true } | { ok: false; error: string };
+
+const AI_MODES = ["off", "assisted", "semi", "autonomous"] as const;
+const AI_TONES = ["friendly", "formal", "playful"] as const;
+type AiModeValue = (typeof AI_MODES)[number];
+type AiToneValue = (typeof AI_TONES)[number];
+const LANGUAGE_MAX = 40;
+
+// Persist how BizBot replies: mode (off, assisted, semi, autonomous), tone,
+// language, and whether it sends payment links. The mode and tone are checked
+// against the same allowed sets the database enforces, and payment links are
+// only stored on when the mode is autonomous so the toggle and the engine agree.
+// Owner-scoped; a client-supplied business is never trusted.
+export async function updateAiBehaviorAction(input: {
+  mode: string;
+  tone: string;
+  language: string;
+  autopay: boolean;
+}): Promise<AiBehaviorActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const { data: business } = await supabase
+    .from("businesses")
+    .select("id")
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (!business) return { ok: false, error: "No business found for this account." };
+
+  const mode = input.mode as AiModeValue;
+  if (!AI_MODES.includes(mode)) return { ok: false, error: "Pick a valid BizBot mode." };
+  const tone = input.tone as AiToneValue;
+  if (!AI_TONES.includes(tone)) return { ok: false, error: "Pick a valid tone." };
+
+  let language = (input.language ?? "").trim();
+  if (language.length > LANGUAGE_MAX) {
+    return { ok: false, error: "Language is too long (max 40 characters)." };
+  }
+  if (!language) language = "English";
+
+  const autopay = mode === "autonomous" ? !!input.autopay : false;
+
+  const { error } = await supabase
+    .from("businesses")
+    .update({
+      ai_mode: mode,
+      ai_tone: tone,
+      ai_language: language,
+      ai_sends_payment_link: autopay,
+    })
+    .eq("id", business.id);
+  if (error) {
+    console.error("[bizbot] ai behavior update failed", error);
+    return { ok: false, error: "Could not save. Please try again." };
+  }
+
+  revalidatePath("/dashboard/bizbot");
+  return { ok: true };
+}
