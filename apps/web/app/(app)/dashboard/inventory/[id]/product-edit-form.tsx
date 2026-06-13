@@ -25,9 +25,11 @@ type EditableProduct = {
 export function ProductEditForm({
   product,
   businessId,
+  stockManagedByVariants = false,
 }: {
   product: EditableProduct;
   businessId: string;
+  stockManagedByVariants?: boolean;
 }) {
   const [state, formAction, isPending] = useActionState(
     updateProductAction,
@@ -156,22 +158,40 @@ export function ProductEditForm({
 
           <div>
             <Label htmlFor="stock_quantity">Stock quantity</Label>
-            <Input
-              id="stock_quantity"
-              name="stock_quantity"
-              type="number"
-              min={0}
-              step={1}
-              required
-              defaultValue={product.stock_quantity}
-              className="mt-1.5 tabular-nums"
-              aria-invalid={Boolean(state.fieldErrors?.stock_quantity)}
-            />
-            {state.fieldErrors?.stock_quantity ? (
-              <p className="mt-1.5 text-xs text-red-600">
-                {state.fieldErrors.stock_quantity}
-              </p>
-            ) : null}
+            {stockManagedByVariants ? (
+              <>
+                <Input
+                  id="stock_quantity"
+                  name="stock_quantity"
+                  type="number"
+                  readOnly
+                  value={product.stock_quantity}
+                  className="mt-1.5 tabular-nums bg-surface-muted text-text-muted"
+                />
+                <p className="mt-1.5 text-xs text-text-muted">
+                  Total of variant stock. Edit each variant in the Variants section below.
+                </p>
+              </>
+            ) : (
+              <>
+                <Input
+                  id="stock_quantity"
+                  name="stock_quantity"
+                  type="number"
+                  min={0}
+                  step={1}
+                  required
+                  defaultValue={product.stock_quantity}
+                  className="mt-1.5 tabular-nums"
+                  aria-invalid={Boolean(state.fieldErrors?.stock_quantity)}
+                />
+                {state.fieldErrors?.stock_quantity ? (
+                  <p className="mt-1.5 text-xs text-red-600">
+                    {state.fieldErrors.stock_quantity}
+                  </p>
+                ) : null}
+              </>
+            )}
           </div>
         </div>
       </section>
