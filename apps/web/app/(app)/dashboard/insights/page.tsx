@@ -9,7 +9,7 @@ import {
   Receipt,
   Clock,
   Package,
-  Sparkles,
+  Bot,
 } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
@@ -417,7 +417,7 @@ export default async function InsightsPage({
       <section className="rounded-3xl bg-brand-soft p-5 ring-1 ring-brand-primary/10 sm:p-6">
         <div className="flex items-start gap-3">
           <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-primary/10 text-brand-primary">
-            <Sparkles size={18} strokeWidth={1.75} />
+            <Bot size={18} strokeWidth={1.75} />
           </div>
           <div>
             <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-brand-primary">Summary</p>
