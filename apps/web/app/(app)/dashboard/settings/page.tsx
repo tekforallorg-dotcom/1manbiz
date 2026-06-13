@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 
 import { BusinessSettingsForm } from "./business-settings-form";
 import { CatalogueLinkCard } from "./catalogue-link-card";
+import { ManageWhatsAppCard } from "./manage-whatsapp-card";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,8 @@ export default async function SettingsPage() {
       />
 
       <BusinessSettingsForm business={business} />
+
+      <ManageWhatsAppCard />
     </div>
   );
 }
