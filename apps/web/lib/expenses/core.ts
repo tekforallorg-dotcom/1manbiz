@@ -1,8 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
- * Shared expenses core. The API route and the (future) web server action both
- * call these, so business resolution, validation, and the DB writes live in one
+ * Shared expenses core. The API routes and the web server actions both call
+ * these, so business resolution, validation, and the DB writes live in one
  * place and cannot drift -- the same pattern as lib/payments/init.ts.
  *
  * Money note: unlike orders/payments (where the customer must never set the
@@ -17,18 +17,26 @@ import { createAdminClient } from "@/lib/supabase/admin";
  */
 
 export const EXPENSE_CATEGORIES = [
-  "inventory",
-  "rent",
+  "stock",
+  "delivery",
   "transport",
+  "rent",
+  "utilities",
   "airtime_data",
   "salaries",
-  "utilities",
+  "packaging",
   "marketing",
   "fees",
   "other",
 ] as const;
 
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+
+// Origin of the row. 'manual' is vendor entry; 'ai_chat' is the future BizBot
+// capture; 'import' and 'receipt_upload' are later bulk and photo paths.
+export const EXPENSE_SOURCES = ["manual", "ai_chat", "import", "receipt_upload"] as const;
+
+export type ExpenseSource = (typeof EXPENSE_SOURCES)[number];
 
 export type ExpenseRow = {
   id: string;
@@ -37,6 +45,7 @@ export type ExpenseRow = {
   category: ExpenseCategory;
   occurred_at: string; // YYYY-MM-DD
   note: string | null;
+  source: ExpenseSource;
   created_at: string;
   updated_at: string;
 };
@@ -46,10 +55,26 @@ export type CreateExpenseInput = {
   category: unknown;
   occurredAt?: unknown;
   note?: unknown;
+  source?: unknown;
 };
 
 export type CreateExpenseResult =
   | { ok: true; expense: ExpenseRow }
+  | { ok: false; error: string; status: number };
+
+export type UpdateExpenseInput = {
+  amountKobo?: unknown;
+  category?: unknown;
+  occurredAt?: unknown;
+  note?: unknown;
+};
+
+export type UpdateExpenseResult =
+  | { ok: true; expense: ExpenseRow }
+  | { ok: false; error: string; status: number };
+
+export type DeleteExpenseResult =
+  | { ok: true; id: string }
   | { ok: false; error: string; status: number };
 
 export type ListExpensesOptions = {
@@ -62,7 +87,7 @@ export type ListExpensesResult =
   | { ok: false; error: string; status: number };
 
 const EXPENSE_COLS =
-  "id, business_id, amount_kobo, category, occurred_at, note, created_at, updated_at";
+  "id, business_id, amount_kobo, category, occurred_at, note, source, created_at, updated_at";
 const NOTE_MAX = 500;
 // MVP scale: a month of expenses is far below this. total_kobo is summed over
 // the returned rows, so this cap also bounds the total. If a business ever
@@ -95,6 +120,10 @@ function isValidCategory(v: unknown): v is ExpenseCategory {
   return typeof v === "string" && (EXPENSE_CATEGORIES as readonly string[]).includes(v);
 }
 
+function isValidSource(v: unknown): v is ExpenseSource {
+  return typeof v === "string" && (EXPENSE_SOURCES as readonly string[]).includes(v);
+}
+
 function parseOccurredAt(v: unknown): { ok: true; value: string } | { ok: false } {
   if (v === undefined || v === null || v === "") {
     return { ok: true, value: lagosToday() };
@@ -104,6 +133,20 @@ function parseOccurredAt(v: unknown): { ok: true; value: string } | { ok: false 
   if (Number.isNaN(d.getTime())) return { ok: false };
   if (v > lagosToday()) return { ok: false }; // no future-dated expenses
   return { ok: true, value: v };
+}
+
+// Normalize an optional note value. `undefined`/`null`/empty become null; a
+// string is trimmed and length-checked. Shared by create and update.
+function normalizeNote(
+  v: unknown,
+): { ok: true; value: string | null } | { ok: false; error: string } {
+  if (v === undefined || v === null) return { ok: true, value: null };
+  if (typeof v !== "string") return { ok: false, error: "note must be a string" };
+  const trimmed = v.trim();
+  if (trimmed.length > NOTE_MAX) {
+    return { ok: false, error: "note must be " + NOTE_MAX + " characters or fewer" };
+  }
+  return { ok: true, value: trimmed.length > 0 ? trimmed : null };
 }
 
 export async function createExpense(
@@ -137,17 +180,21 @@ export async function createExpense(
       status: 400,
     };
   }
+  const note = normalizeNote(input.note);
+  if (!note.ok) return { ok: false, error: note.error, status: 400 };
 
-  let note: string | null = null;
-  if (input.note !== undefined && input.note !== null) {
-    if (typeof input.note !== "string") {
-      return { ok: false, error: "note must be a string", status: 400 };
+  // source is system/owner context, not vendor money input. Default manual;
+  // accept an explicit valid source so the future AI path can tag 'ai_chat'.
+  let source: ExpenseSource = "manual";
+  if (input.source !== undefined && input.source !== null && input.source !== "") {
+    if (!isValidSource(input.source)) {
+      return {
+        ok: false,
+        error: "source must be one of: " + EXPENSE_SOURCES.join(", "),
+        status: 400,
+      };
     }
-    const trimmed = input.note.trim();
-    if (trimmed.length > NOTE_MAX) {
-      return { ok: false, error: "note must be " + NOTE_MAX + " characters or fewer", status: 400 };
-    }
-    note = trimmed.length > 0 ? trimmed : null;
+    source = input.source;
   }
 
   const { data, error } = await admin
@@ -157,7 +204,8 @@ export async function createExpense(
       amount_kobo: input.amountKobo,
       category: input.category,
       occurred_at: occurred.value,
-      note,
+      note: note.value,
+      source,
     })
     .select(EXPENSE_COLS)
     .single();
@@ -169,6 +217,105 @@ export async function createExpense(
 
   console.log("[expenses/create] created", { businessId, expenseId: (data as ExpenseRow).id });
   return { ok: true, expense: data as ExpenseRow };
+}
+
+export async function updateExpense(
+  userId: string,
+  expenseId: string,
+  patch: UpdateExpenseInput,
+): Promise<UpdateExpenseResult> {
+  if (!expenseId) return { ok: false, error: "expense id required", status: 400 };
+
+  const admin = createAdminClient();
+  const businessId = await resolveBusinessId(admin, userId);
+  if (!businessId) return { ok: false, error: "No business on file", status: 403 };
+
+  const update: Record<string, unknown> = {};
+
+  if (patch.amountKobo !== undefined) {
+    if (!isIntegerKobo(patch.amountKobo)) {
+      return {
+        ok: false,
+        error: "amount_kobo must be a whole number of kobo greater than 0",
+        status: 400,
+      };
+    }
+    update.amount_kobo = patch.amountKobo;
+  }
+  if (patch.category !== undefined) {
+    if (!isValidCategory(patch.category)) {
+      return {
+        ok: false,
+        error: "category must be one of: " + EXPENSE_CATEGORIES.join(", "),
+        status: 400,
+      };
+    }
+    update.category = patch.category;
+  }
+  if (patch.occurredAt !== undefined) {
+    const occurred = parseOccurredAt(patch.occurredAt);
+    if (!occurred.ok) {
+      return {
+        ok: false,
+        error: "occurred_at must be a valid YYYY-MM-DD date, not in the future",
+        status: 400,
+      };
+    }
+    update.occurred_at = occurred.value;
+  }
+  if (patch.note !== undefined) {
+    const note = normalizeNote(patch.note);
+    if (!note.ok) return { ok: false, error: note.error, status: 400 };
+    update.note = note.value;
+  }
+
+  if (Object.keys(update).length === 0) {
+    return { ok: false, error: "No valid fields to update", status: 400 };
+  }
+
+  const { data, error } = await admin
+    .from("expenses")
+    .update(update)
+    .eq("id", expenseId)
+    .eq("business_id", businessId)
+    .select(EXPENSE_COLS)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[expenses/update] update failed", { businessId, expenseId, error });
+    return { ok: false, error: "Could not update expense", status: 500 };
+  }
+  if (!data) return { ok: false, error: "Expense not found", status: 404 };
+
+  return { ok: true, expense: data as ExpenseRow };
+}
+
+export async function deleteExpense(
+  userId: string,
+  expenseId: string,
+): Promise<DeleteExpenseResult> {
+  if (!expenseId) return { ok: false, error: "expense id required", status: 400 };
+
+  const admin = createAdminClient();
+  const businessId = await resolveBusinessId(admin, userId);
+  if (!businessId) return { ok: false, error: "No business on file", status: 403 };
+
+  const { data, error } = await admin
+    .from("expenses")
+    .delete()
+    .eq("id", expenseId)
+    .eq("business_id", businessId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    console.error("[expenses/delete] delete failed", { businessId, expenseId, error });
+    return { ok: false, error: "Could not delete expense", status: 500 };
+  }
+  if (!data) return { ok: false, error: "Expense not found", status: 404 };
+
+  console.log("[expenses/delete] deleted", { businessId, expenseId });
+  return { ok: true, id: (data as { id: string }).id };
 }
 
 export async function listExpenses(
