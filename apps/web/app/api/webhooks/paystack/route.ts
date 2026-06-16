@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
 
   const { error: orderUpdateErr } = await admin
     .from("orders")
-    .update({ status: "paid" })
+    .update({ status: "paid", payment_method: "online" })
     .eq("id", order.id)
     .eq("business_id", payment.business_id);
 
