@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
-import { Clock, Receipt } from "lucide-react";
+import { Clock, Receipt, Plus } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { formatNairaFromKobo } from "@/lib/format";
+
+import { MoneyTabs } from "./money-tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -192,6 +194,17 @@ export default async function MoneyPage({
             );
           })}
         </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <MoneyTabs active="overview" />
+        <Link
+          href="/dashboard/money/expenses"
+          className="inline-flex items-center gap-1.5 rounded-full bg-brand-primary px-3.5 py-1.5 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90"
+        >
+          <Plus className="h-4 w-4" strokeWidth={2} />
+          Add expense
+        </Link>
       </div>
 
       <section className="hm-rise">
