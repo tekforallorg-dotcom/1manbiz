@@ -10,6 +10,7 @@ import {
   Settings,
   ShoppingBag,
   Users,
+  Wallet,
 } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { label: "Bookings", href: "/dashboard/bookings", icon: Calendar },
   { label: "Inventory", href: "/dashboard/inventory", icon: Package },
   { label: "Customers", href: "/dashboard/customers", icon: Users },
+  { label: "Money", href: "/dashboard/money", icon: Wallet },
   { label: "Receipts", href: "/dashboard/receipts", icon: Receipt },
   { label: "Insights", href: "/dashboard/insights", icon: LineChart },
   { label: "BizBot", href: "/dashboard/bizbot", icon: Bot },
