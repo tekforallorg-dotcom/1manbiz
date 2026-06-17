@@ -133,7 +133,7 @@ export default function InsightsScreen() {
           </View>
         ) : (
           <View className="gap-4 mt-3">
-            <View className="rounded-3xl p-5 bg-green-50" style={styles.card}>
+            <View className="rounded-3xl p-5 bg-white" style={styles.card}>
               <View className="flex-row items-center mb-2">
                 <Bot size={16} color="#15803D" />
                 <Text className="text-green-700 text-xs font-bold uppercase tracking-wider ml-1.5">BizBot summary</Text>
@@ -195,10 +195,7 @@ export default function InsightsScreen() {
 
 const styles = StyleSheet.create({
   card: {
-    shadowColor: "#0B0B0B",
-    shadowOpacity: 0.06,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
 });

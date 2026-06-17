@@ -192,36 +192,36 @@ export default function HomeScreen() {
 
           {/* Hero revenue card */}
           <View className="px-6 pt-5">
-            <View className="bg-white rounded-3xl px-5 py-5" style={CARD_SHADOW}>
-              <Text className="text-textMuted text-xs font-medium uppercase tracking-wider">Today's revenue</Text>
+            <View className="bg-primary rounded-3xl px-5 py-5" style={CARD_SHADOW}>
+              <Text className="text-white/70 text-xs font-medium uppercase tracking-wider">Today's revenue</Text>
               {loading && !summary ? (
-                <View className="mt-2 h-10 w-44 rounded-lg bg-gray-100" />
+                <View className="mt-2 h-10 w-44 rounded-lg bg-white/20" />
               ) : t ? (
                 <View className="flex-row items-baseline mt-1">
-                  <Text className="text-textMuted text-xl font-normal mr-1">{nairaParts(t.revenueTodayKobo).symbol}</Text>
-                  <Text className="text-text text-4xl font-bold" numberOfLines={1}>{nairaParts(t.revenueTodayKobo).amount}</Text>
+                  <Text className="text-white/70 text-xl font-normal mr-1">{nairaParts(t.revenueTodayKobo).symbol}</Text>
+                  <Text className="text-white text-4xl font-bold" numberOfLines={1}>{nairaParts(t.revenueTodayKobo).amount}</Text>
                 </View>
               ) : (
-                <Text className="text-text text-4xl font-bold mt-1">-</Text>
+                <Text className="text-white text-4xl font-bold mt-1">-</Text>
               )}
-              <Text className="text-textSecondary text-sm mt-3 leading-5">{buildSummary(summary)}</Text>
+              <Text className="text-white/80 text-sm mt-3 leading-5">{buildSummary(summary)}</Text>
 
-              <View className="flex-row mt-4 pt-4 border-t border-gray-100">
+              <View className="flex-row mt-4 pt-4 border-t border-white/20">
                 <View className="flex-1">
-                  <Text className="text-textMuted text-xs uppercase tracking-wide">Orders</Text>
-                  <Text className="text-text text-lg font-semibold mt-0.5">
+                  <Text className="text-white/70 text-xs uppercase tracking-wide">Orders</Text>
+                  <Text className="text-white text-lg font-semibold mt-0.5">
                     {t?.ordersTodayCount != null ? String(t.ordersTodayCount) : "-"}
                   </Text>
                 </View>
                 <View className="flex-1">
-                  <Text className="text-textMuted text-xs uppercase tracking-wide">Pending</Text>
-                  <Text className={"text-lg font-semibold mt-0.5 " + (pending > 0 ? "text-primary" : "text-text")}>
+                  <Text className="text-white/70 text-xs uppercase tracking-wide">Pending</Text>
+                  <Text className="text-white text-lg font-semibold mt-0.5">
                     {t?.pendingCount != null ? String(t.pendingCount) : "-"}
                   </Text>
                 </View>
                 <View className="flex-1">
-                  <Text className="text-textMuted text-xs uppercase tracking-wide">Products</Text>
-                  <Text className="text-text text-lg font-semibold mt-0.5">
+                  <Text className="text-white/70 text-xs uppercase tracking-wide">Products</Text>
+                  <Text className="text-white text-lg font-semibold mt-0.5">
                     {t?.activeProductsCount != null ? String(t.activeProductsCount) : "-"}
                   </Text>
                 </View>
@@ -229,10 +229,10 @@ export default function HomeScreen() {
 
               <Pressable
                 onPress={() => router.push(ctaPending ? "/orders" : "/conversations")}
-                className={"flex-row items-center justify-center rounded-full py-3 mt-4 active:opacity-80 " + (ctaPending ? "bg-primary" : "bg-gray-100")}
+                className={"flex-row items-center justify-center rounded-full py-3 mt-4 active:opacity-80 " + (ctaPending ? "bg-white" : "bg-white/15")}
               >
-                <Text className={"text-sm font-semibold mr-0.5 " + (ctaPending ? "text-white" : "text-text")}>{ctaLabel}</Text>
-                <ChevronRight size={16} color={ctaPending ? "#FFFFFF" : designColors.text} strokeWidth={2.5} />
+                <Text className={"text-sm font-semibold mr-0.5 " + (ctaPending ? "text-primary" : "text-white")}>{ctaLabel}</Text>
+                <ChevronRight size={16} color={ctaPending ? designColors.primary : "#FFFFFF"} strokeWidth={2.5} />
               </Pressable>
             </View>
           </View>
@@ -252,8 +252,7 @@ export default function HomeScreen() {
                         else if (a.key === "settings") router.push("/settings");
                         else router.push("/insights");
                       }}
-                      className="bg-white rounded-3xl p-4 active:opacity-80"
-                      style={CARD_SHADOW}
+                      className="bg-white rounded-3xl p-4 active:opacity-80 border border-border"
                     >
                       <View className={"w-11 h-11 rounded-2xl items-center justify-center " + (a.primary ? "bg-green-50" : "bg-gray-100")}>
                         <Icon size={20} color={a.primary ? designColors.primary : designColors.text} strokeWidth={2} />
@@ -284,7 +283,7 @@ export default function HomeScreen() {
             {loading && !summary ? (
               <Text className="text-textMuted text-sm">Loading recent orders...</Text>
             ) : summary && summary.recentOrders.length === 0 ? (
-              <View className="bg-white rounded-3xl px-5 py-6" style={CARD_SHADOW}>
+              <View className="bg-white rounded-3xl px-5 py-6 border border-border">
                 <Text className="text-text text-base font-medium">No orders yet</Text>
                 <Text className="text-textMuted text-sm mt-1">They will appear here when customers buy from you.</Text>
               </View>
