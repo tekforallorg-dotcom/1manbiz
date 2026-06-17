@@ -6,7 +6,6 @@ import {
   Pressable,
   TextInput,
   ActivityIndicator,
-  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -14,6 +13,7 @@ import { ChevronDown, Trash2 } from "lucide-react-native";
 import { colors as designColors } from "@1manbiz/design";
 
 import { ScreenHeader } from "./screen-header";
+import { useNotifier } from "./notifier";
 import { parseNairaToKobo } from "../lib/money";
 import {
   createExpense,
@@ -58,6 +58,7 @@ export function ExpenseForm({
   const [showCategories, setShowCategories] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const { notify, confirm } = useNotifier();
 
   const amountKobo = useMemo(() => parseNairaToKobo(amount), [amount]);
   const canSave = amountKobo !== null && amountKobo > 0 && !saving && !deleting;
@@ -72,7 +73,7 @@ export function ExpenseForm({
   const handleSave = async () => {
     const problem = validate();
     if (problem || amountKobo === null) {
-      Alert.alert("Check the expense", problem ?? "Please review the fields.");
+      notify({ type: "error", title: "Check the expense", message: problem ?? "Please review the fields." });
       return;
     }
     setSaving(true);
@@ -89,7 +90,7 @@ export function ExpenseForm({
     setSaving(false);
 
     if (result.error) {
-      Alert.alert("Could not save expense", result.error);
+      notify({ type: "error", title: "Could not save expense", message: result.error });
       return;
     }
     router.back();
@@ -97,23 +98,22 @@ export function ExpenseForm({
 
   const handleDelete = () => {
     if (!expense) return;
-    Alert.alert("Delete this expense?", "This cannot be undone.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          setDeleting(true);
-          const result = await deleteExpense(businessId, expense.id);
-          setDeleting(false);
-          if (result.error) {
-            Alert.alert("Could not delete expense", result.error);
-            return;
-          }
-          router.back();
-        },
+    confirm({
+      title: "Delete this expense?",
+      message: "This cannot be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+      onConfirm: async () => {
+        setDeleting(true);
+        const result = await deleteExpense(businessId, expense.id);
+        setDeleting(false);
+        if (result.error) {
+          notify({ type: "error", title: "Could not delete expense", message: result.error });
+          return;
+        }
+        router.back();
       },
-    ]);
+    });
   };
 
   return (
