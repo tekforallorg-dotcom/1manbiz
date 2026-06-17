@@ -27,6 +27,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="inventory" />
         <Tabs.Screen name="customers" />
         <Tabs.Screen name="receipts" />
+        <Tabs.Screen name="money" />
         <Tabs.Screen name="insights" />
         <Tabs.Screen name="bizbot" />
         <Tabs.Screen name="settings" />

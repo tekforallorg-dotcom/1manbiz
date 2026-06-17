@@ -8,6 +8,7 @@ import {
   Users,
   FileText,
   LineChart,
+  Wallet,
   Settings,
 } from "lucide-react-native";
 import { BizBotIcon } from "./bizbot-mark";
@@ -29,6 +30,7 @@ export const NAV_ITEMS: NavItem[] = [
   { name: "inventory", label: "Inventory", route: "/inventory", icon: Package },
   { name: "customers", label: "Customers", route: "/customers", icon: Users },
   { name: "receipts", label: "Receipts", route: "/receipts", icon: FileText },
+  { name: "money", label: "Money", route: "/money", icon: Wallet },
   { name: "insights", label: "Insights", route: "/insights", icon: LineChart },
   { name: "bizbot", label: "BizBot", route: "/bizbot", icon: BizBotIcon },
   { name: "settings", label: "Settings", route: "/settings", icon: Settings },
