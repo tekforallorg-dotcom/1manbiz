@@ -44,7 +44,7 @@ function StatCard(props: { label: string; value: string; icon: ReactNode; tone?:
     return (
       <div
         className={
-          "relative overflow-hidden rounded-3xl bg-[linear-gradient(135deg,#16A34A_0%,#15803D_55%,#064E3B_100%)] p-5 text-white shadow-[0_18px_44px_-26px_rgba(6,78,59,0.6)] sm:p-6 " +
+          "relative overflow-hidden rounded-3xl bg-[linear-gradient(150deg,#00A862_0%,#05492F_55%,#06281E_100%)] p-5 text-white shadow-[0_22px_48px_-28px_rgba(6,40,30,0.55)] sm:p-6 " +
           (props.className ?? "")
         }
       >
@@ -52,7 +52,7 @@ function StatCard(props: { label: string; value: string; icon: ReactNode; tone?:
         <div className="relative">
           <div className="inline-grid size-9 place-items-center rounded-xl bg-white/15 text-white">{props.icon}</div>
           <p className="mt-4 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/70">{props.label}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums sm:text-3xl">{props.value}</p>
+          <p className="mt-1.5 money-figure text-2xl sm:text-3xl">{props.value}</p>
         </div>
       </div>
     );
@@ -60,13 +60,13 @@ function StatCard(props: { label: string; value: string; icon: ReactNode; tone?:
   return (
     <div
       className={
-        "rounded-3xl bg-white p-5 ring-1 ring-black/[0.04] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_-16px_rgba(0,0,0,0.12)] sm:p-6 " +
+        "rounded-3xl border border-border bg-surface p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover sm:p-6 " +
         (props.className ?? "")
       }
     >
       <div className="inline-grid size-9 place-items-center rounded-xl bg-surface-muted text-text-secondary">{props.icon}</div>
       <p className="mt-4 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-text-muted">{props.label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground sm:text-3xl">{props.value}</p>
+      <p className="mt-1.5 money-figure text-2xl text-foreground sm:text-3xl">{props.value}</p>
     </div>
   );
 }
@@ -111,17 +111,17 @@ export default async function ReceiptsPage() {
 `}</style>
 
       <header className="hm-rise">
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Receipts</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Receipts</h1>
         <p className="mt-1 text-sm text-text-secondary">Paid orders with a shareable receipt</p>
       </header>
 
       {!hasItems ? (
-        <div className="hm-rise rounded-3xl bg-white p-10 ring-1 ring-black/[0.04] sm:p-16">
+        <div className="hm-rise rounded-3xl border border-border bg-surface p-10 shadow-card sm:p-16">
           <div className="mx-auto max-w-md text-center">
             <div className="mx-auto grid size-16 place-items-center rounded-2xl bg-brand-soft text-brand-primary">
               <Receipt size={28} strokeWidth={1.75} />
             </div>
-            <h2 className="mt-6 text-xl font-semibold text-foreground sm:text-2xl">No receipts yet</h2>
+            <h2 className="mt-6 font-display text-xl font-semibold text-foreground sm:text-2xl">No receipts yet</h2>
             <p className="mt-2 text-sm text-text-secondary">A receipt is created when an order is marked paid.</p>
           </div>
         </div>
@@ -147,7 +147,7 @@ export default async function ReceiptsPage() {
                 <li key={r.id}>
                   <Link
                     href={"/dashboard/receipts/" + r.id}
-                    className="group flex items-center gap-4 rounded-2xl bg-white p-4 ring-1 ring-black/[0.04] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_24px_-16px_rgba(0,0,0,0.12)] hover:ring-black/[0.08] sm:gap-5 sm:p-5"
+                    className="group flex items-center gap-4 rounded-2xl border border-border bg-surface p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card sm:gap-5 sm:p-5"
                   >
                     <div className="grid size-11 shrink-0 place-items-center rounded-full bg-surface-muted text-sm font-medium text-text-secondary">
                       {initial}

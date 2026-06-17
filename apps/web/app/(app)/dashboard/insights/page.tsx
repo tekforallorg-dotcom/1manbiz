@@ -56,7 +56,7 @@ type ItemRow = {
 type TopProduct = { name: string; qty: number; revenueKobo: number };
 
 // Monochromatic green ramp keeps the donut on-brand instead of a rainbow.
-const DONUT_COLORS = ["#16A34A", "#15803D", "#22C55E", "#4ADE80", "#86EFAC"];
+const DONUT_COLORS = ["#00A862", "#15803D", "#22C55E", "#4ADE80", "#86EFAC"];
 const OTHERS_COLOR = "#D4D4D8";
 
 function buildSummary(
@@ -109,7 +109,7 @@ function HeroRevenue(props: {
     <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-primary to-brand-dark p-5 text-white shadow-[0_18px_40px_-22px_rgba(6,78,59,0.6)] sm:p-6">
       <div className="pointer-events-none absolute -right-8 -top-10 size-32 rounded-full bg-white/10 blur-2xl" />
       <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/70">Paid revenue</p>
-      <p className="mt-3 text-2xl font-semibold tabular-nums sm:text-3xl">{value}</p>
+      <p className="mt-3 money-figure text-2xl sm:text-3xl">{value}</p>
       {deltaPct === null ? (
         <p className="mt-2 text-xs text-white/65">{note}</p>
       ) : (
@@ -135,7 +135,7 @@ function KpiCard(props: {
 }) {
   const warn = props.tone === "warning";
   return (
-    <div className="rounded-3xl bg-white p-5 ring-1 ring-black/[0.04] sm:p-6">
+    <div className="rounded-3xl border border-border bg-surface p-5 shadow-card sm:p-6">
       <div
         className={
           "inline-grid size-9 place-items-center rounded-xl " +
@@ -147,7 +147,7 @@ function KpiCard(props: {
       <p className="mt-4 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-text-muted">{props.label}</p>
       <p
         className={
-          "mt-1 text-2xl font-semibold tabular-nums sm:text-3xl " +
+          "mt-1.5 money-figure text-2xl sm:text-3xl " +
           (warn ? "text-warning" : "text-foreground")
         }
       >
@@ -388,12 +388,12 @@ export default async function InsightsPage({
     <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Insights</h1>
+          <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Insights</h1>
           <p className="mt-1 text-sm text-text-secondary">
             {"How " + business.name + " is performing over the " + label + "."}
           </p>
         </div>
-        <nav className="inline-flex rounded-full bg-surface-muted p-1 ring-1 ring-black/[0.06]">
+        <nav className="inline-flex rounded-full bg-surface-muted p-1">
           {RANGES.map((r) => {
             const active = r.key === range;
             return (
@@ -403,7 +403,7 @@ export default async function InsightsPage({
                 className={
                   "rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors " +
                   (active
-                    ? "bg-white text-foreground shadow-sm ring-1 ring-black/[0.06]"
+                    ? "bg-surface text-foreground shadow-sm"
                     : "text-text-secondary hover:text-foreground")
                 }
               >
@@ -448,7 +448,7 @@ export default async function InsightsPage({
       </section>
 
       <section className="grid gap-3 sm:grid-cols-5 sm:gap-4">
-        <div className="rounded-3xl bg-white p-5 ring-1 ring-black/[0.04] sm:col-span-3 sm:p-6">
+        <div className="rounded-3xl border border-border bg-surface p-5 shadow-card sm:col-span-3 sm:p-6">
           <div className="flex items-center justify-between">
             <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-text-muted">Revenue trend</p>
             <span className="inline-flex items-center gap-1.5 text-xs text-text-secondary">
@@ -467,7 +467,7 @@ export default async function InsightsPage({
           )}
         </div>
 
-        <div className="rounded-3xl bg-white p-5 ring-1 ring-black/[0.04] sm:col-span-2 sm:p-6">
+        <div className="rounded-3xl border border-border bg-surface p-5 shadow-card sm:col-span-2 sm:p-6">
           <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-text-muted">Revenue by product</p>
           {totalItemsRevenue > 0 ? (
             <div className="mt-4 flex items-center gap-4">
@@ -498,9 +498,9 @@ export default async function InsightsPage({
       </section>
 
       <section>
-        <h2 className="text-base font-medium text-foreground">Top products</h2>
+        <h2 className="font-display text-lg font-semibold text-foreground">Top products</h2>
         {topProducts.length === 0 ? (
-          <div className="mt-4 rounded-3xl bg-white p-10 text-center ring-1 ring-black/[0.04]">
+          <div className="mt-4 rounded-3xl border border-border bg-surface p-10 text-center shadow-card">
             <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-brand-soft text-brand-primary">
               <Package size={22} strokeWidth={1.75} />
             </div>
@@ -511,7 +511,7 @@ export default async function InsightsPage({
             {topProducts.map((p, i) => {
               const pct = Math.round((p.revenueKobo / maxTop) * 100);
               return (
-                <li key={p.name} className="rounded-2xl bg-white p-4 ring-1 ring-black/[0.04] sm:p-5">
+                <li key={p.name} className="rounded-2xl border border-border bg-surface p-4 shadow-sm sm:p-5">
                   <div className="flex items-center gap-3">
                     <span className="grid size-6 shrink-0 place-items-center rounded-full bg-surface-muted text-[11px] font-semibold tabular-nums text-text-secondary">
                       {i + 1}
