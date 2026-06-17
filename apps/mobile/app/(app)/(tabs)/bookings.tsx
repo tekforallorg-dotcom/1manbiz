@@ -6,6 +6,7 @@ import { Plus } from "lucide-react-native";
 import { useSession } from "../../../lib/session";
 import { getActiveBusinessId } from "../../../lib/business";
 import { fetchBookings, type BookingListItem, type BookingStatus } from "../../../lib/bookings";
+import { SummaryStrip } from "../../../components/summary-strip";
 
 const STATUS_STYLES: Record<BookingStatus, { bg: string; text: string; label: string }> = {
   pending:   { bg: "bg-amber-50",  text: "text-amber-700", label: "Pending" },
@@ -82,6 +83,22 @@ export default function BookingsScreen() {
         contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 24 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#9CA3AF" />}
       >
+        {bookings && bookings.length > 0 ? (
+          <SummaryStrip
+            items={[
+              { label: "Upcoming", value: String(bookings.length), tone: "lead" },
+              {
+                label: "Pending",
+                value: String(bookings.filter((b) => b.status === "pending").length),
+                tone: bookings.some((b) => b.status === "pending") ? "warn" : "default",
+              },
+              {
+                label: "Confirmed",
+                value: String(bookings.filter((b) => b.status === "confirmed").length),
+              },
+            ]}
+          />
+        ) : null}
         {loading && !bookings ? (
           <Text className="text-textMuted text-sm">Loading bookings…</Text>
         ) : bookings && bookings.length === 0 ? (
