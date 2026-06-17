@@ -30,7 +30,7 @@ export function ProductList({ products }: { products: Product[] }) {
             key={product.id}
             href={`/dashboard/inventory/${product.id}`}
             className={
-              "group flex flex-col overflow-hidden rounded-2xl bg-gradient-to-b from-white to-surface-muted/40 ring-1 ring-black/[0.05] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_10px_28px_-10px_rgba(0,0,0,0.12)] hover:ring-black/[0.08] " +
+              "group flex flex-col overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-white to-surface-muted/40 shadow-card transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-card-hover " +
               (archived ? "opacity-60" : "")
             }
           >

@@ -3,13 +3,13 @@ import { Package, Plus } from "lucide-react";
 
 export function EmptyState() {
   return (
-    <div className="rounded-3xl bg-white p-10 ring-1 ring-black/[0.04] sm:p-16">
+    <div className="rounded-3xl border border-border bg-surface p-10 shadow-card sm:p-16">
       <div className="mx-auto max-w-md text-center">
         <div className="mx-auto grid size-16 place-items-center rounded-2xl bg-brand-soft text-brand-primary">
           <Package size={28} strokeWidth={1.75} />
         </div>
 
-        <h2 className="mt-6 text-xl font-semibold text-foreground sm:text-2xl">
+        <h2 className="mt-6 font-display text-xl font-semibold text-foreground sm:text-2xl">
           No products yet
         </h2>
         <p className="mt-2 text-sm text-text-secondary">

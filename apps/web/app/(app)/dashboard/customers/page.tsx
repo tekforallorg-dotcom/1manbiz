@@ -23,7 +23,7 @@ function StatCard(props: {
     return (
       <div
         className={
-          "relative overflow-hidden rounded-3xl bg-[linear-gradient(135deg,#16A34A_0%,#15803D_55%,#064E3B_100%)] p-5 text-white shadow-[0_18px_44px_-26px_rgba(6,78,59,0.6)] sm:p-6 " +
+          "relative overflow-hidden rounded-3xl bg-[linear-gradient(150deg,#00A862_0%,#05492F_55%,#06281E_100%)] p-5 text-white shadow-[0_22px_48px_-28px_rgba(6,40,30,0.55)] sm:p-6 " +
           (props.className ?? "")
         }
       >
@@ -31,7 +31,7 @@ function StatCard(props: {
         <div className="relative">
           <div className="inline-grid size-9 place-items-center rounded-xl bg-white/15 text-white">{props.icon}</div>
           <p className="mt-4 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/70">{props.label}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums sm:text-3xl">{props.value}</p>
+          <p className="mt-1.5 money-figure text-2xl sm:text-3xl">{props.value}</p>
         </div>
       </div>
     );
@@ -40,7 +40,7 @@ function StatCard(props: {
   return (
     <div
       className={
-        "rounded-3xl bg-white p-5 ring-1 ring-black/[0.04] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_-16px_rgba(0,0,0,0.12)] sm:p-6 " +
+        "rounded-3xl border border-border bg-surface p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover sm:p-6 " +
         (props.className ?? "")
       }
     >
@@ -55,7 +55,7 @@ function StatCard(props: {
       <p className="mt-4 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-text-muted">{props.label}</p>
       <p
         className={
-          "mt-1 text-2xl font-semibold tabular-nums sm:text-3xl " + (warn ? "text-warning" : "text-foreground")
+          "mt-1.5 money-figure text-2xl sm:text-3xl " + (warn ? "text-warning" : "text-foreground")
         }
       >
         {props.value}
@@ -104,7 +104,7 @@ export default async function CustomersPage() {
 
       <header className="hm-rise flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Customers</h1>
+          <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Customers</h1>
           <p className="mt-1 text-sm text-text-secondary">
             {hasItems ? items.length + " " + (items.length === 1 ? "customer" : "customers") : "Track who buys from you"}
           </p>
