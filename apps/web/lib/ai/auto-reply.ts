@@ -626,7 +626,18 @@ export async function maybeAutoReply(args: {
     } else {
       const current = await loadCurrentOrder(admin, businessId, customerId);
       if (!current) {
-        bodyText = "You do not have an open order yet. What would you like to order?";
+        // No cart yet. An add_item here is the preview-before-commit moment:
+        // the customer just pinned a product or variant, so keep the model's
+        // preview reply (for example "... Add it to your cart?") instead of the
+        // confusing "no open order" line. The explicit yes on the next turn
+        // creates the order. Other verbs (confirm, show_cart, cancel,
+        // fulfillment, and so on) genuinely need an existing order, so they
+        // keep the prompt.
+        if (oa.kind === "add_item" && result.reply && result.reply.trim()) {
+          bodyText = result.reply;
+        } else {
+          bodyText = "You do not have an open order yet. What would you like to order?";
+        }
       } else if (oa.kind === "cancel") {
         const cancelled = await cancelOrder(admin, current.orderId);
         if (cancelled.ok) {
@@ -912,7 +923,13 @@ export async function maybeAutoReply(args: {
     })
     .eq("id", conversationId);
 
-  await logDecision("auto_sent", actionDecision ?? undefined);
+  // When no structured action fired, record the text actually sent (bodyText)
+  // rather than the model's raw draft, so the audit log matches what the
+  // customer received.
+  await logDecision(
+    "auto_sent",
+    actionDecision ?? { proposal: { reply: bodyText, confidence: result.confidence } },
+  );
 
   // Owner alert: a confirmed order is worth a ping to the shop owner's own
   // WhatsApp. Best-effort; never blocks or fails the customer reply.
