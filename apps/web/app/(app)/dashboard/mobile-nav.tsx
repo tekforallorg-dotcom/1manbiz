@@ -1,39 +1,12 @@
 "use client";
 
-import {
-  Bot,
-  Calendar,
-  Home,
-  LineChart,
-  LogOut,
-  Menu,
-  MessageSquare,
-  Package,
-  Receipt,
-  Settings,
-  ShoppingBag,
-  Users,
-  Wallet,
-  X,
-} from "lucide-react";
+import { LogOut, Menu, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { signOutAction } from "@/app/(auth)/actions";
 
-const NAV_ITEMS = [
-  { label: "Home", href: "/dashboard", icon: Home },
-  { label: "Conversations", href: "/dashboard/conversations", icon: MessageSquare },
-  { label: "Orders", href: "/dashboard/orders", icon: ShoppingBag },
-  { label: "Bookings", href: "/dashboard/bookings", icon: Calendar },
-  { label: "Inventory", href: "/dashboard/inventory", icon: Package },
-  { label: "Customers", href: "/dashboard/customers", icon: Users },
-  { label: "Money", href: "/dashboard/money", icon: Wallet },
-  { label: "Receipts", href: "/dashboard/receipts", icon: Receipt },
-  { label: "Insights", href: "/dashboard/insights", icon: LineChart },
-  { label: "BizBot", href: "/dashboard/bizbot", icon: Bot },
-  { label: "Settings", href: "/dashboard/settings", icon: Settings },
-] as const;
+import { NavLinks, SettingsNavLink } from "./nav-links";
 
 type Props = {
   businessName: string | null;
@@ -133,22 +106,11 @@ export function MobileNav({ businessName, userName }: Props) {
           </div>
         ) : null}
 
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3">
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={close}
-                className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-[14px] font-medium text-text-secondary transition-colors hover:bg-surface-muted hover:text-foreground"
-              >
-                <Icon className="h-4 w-4" strokeWidth={1.75} />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
+        <NavLinks variant="mobile" onNavigate={close} />
+
+        <div className="border-t border-border px-3 py-2">
+          <SettingsNavLink variant="mobile" onNavigate={close} />
+        </div>
 
         <div className="border-t border-border p-3">
           <div className="px-3 pb-3">
