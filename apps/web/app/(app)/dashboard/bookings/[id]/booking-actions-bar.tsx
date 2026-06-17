@@ -74,7 +74,7 @@ export function BookingActionsBar({
       : "inline-flex items-center gap-1.5 rounded-full bg-brand-primary px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-dark disabled:opacity-50";
 
     return (
-      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+      <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <h3 className="text-base font-medium text-foreground">{c.title}</h3>
         <p className="mt-2 text-sm text-text-secondary">{c.body}</p>
         <div className="mt-5 flex items-center justify-end gap-3">
@@ -95,7 +95,7 @@ export function BookingActionsBar({
   }
 
   return (
-    <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+    <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
       <h3 className="text-base font-medium text-foreground">Actions</h3>
       <p className="mt-2 text-sm text-text-secondary">
         {status === "pending"

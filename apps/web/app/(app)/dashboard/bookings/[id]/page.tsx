@@ -87,11 +87,11 @@ export default async function BookingDetailPage({ params }: { params: Promise<Pa
         </Link>
       </div>
 
-      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+      <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-text-muted">Booking</p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{booking.title}</h1>
+            <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">{booking.title}</h1>
           </div>
           <div className="flex shrink-0 items-center gap-3">
             {isActionable ? (
@@ -151,7 +151,7 @@ export default async function BookingDetailPage({ params }: { params: Promise<Pa
       {isActionable ? (
         <BookingActionsBar bookingId={booking.id as string} status={status} />
       ) : (
-        <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+        <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
           <p className="text-sm text-text-secondary">
             {status === "completed"
               ? "This booking is completed."

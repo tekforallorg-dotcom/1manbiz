@@ -93,7 +93,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
             Customers
           </Link>
         </div>
-        <div className="rounded-3xl bg-white p-10 text-center ring-1 ring-black/[0.04]">
+        <div className="rounded-3xl border border-border bg-surface p-10 text-center shadow-card">
           <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-brand-soft text-brand-primary">
             <Users size={22} strokeWidth={1.75} />
           </div>
@@ -155,7 +155,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         </Link>
       </div>
 
-      <section className="relative rounded-3xl bg-white p-5 ring-1 ring-black/[0.04] sm:p-6">
+      <section className="relative rounded-3xl border border-border bg-surface p-5 shadow-card sm:p-6">
         <div className="flex items-center gap-4">
           <div className="grid size-14 shrink-0 place-items-center rounded-full bg-brand-soft text-base font-semibold text-brand-primary">
             {initials(name)}
@@ -199,13 +199,13 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       </section>
 
       <section className="grid grid-cols-2 gap-3 sm:gap-4">
-        <div className="rounded-3xl bg-white p-5 ring-1 ring-black/[0.04] sm:p-6">
+        <div className="rounded-3xl border border-border bg-surface p-5 shadow-card sm:p-6">
           <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-text-muted">Spent</p>
           <p className="mt-3 text-2xl font-semibold tabular-nums text-foreground sm:text-3xl">
             {formatNairaFromKobo(customer.total_spent_kobo ?? 0)}
           </p>
         </div>
-        <div className="rounded-3xl bg-white p-5 ring-1 ring-black/[0.04] sm:p-6">
+        <div className="rounded-3xl border border-border bg-surface p-5 shadow-card sm:p-6">
           <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-text-muted">Orders</p>
           <p className="mt-3 text-2xl font-semibold tabular-nums text-foreground sm:text-3xl">
             {String(customer.total_orders ?? 0)}
@@ -224,7 +224,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
               <li key={o.id}>
                 <Link
                   href={"/dashboard/orders/" + o.id}
-                  className="flex items-center gap-4 rounded-2xl bg-white p-4 ring-1 ring-black/[0.04] transition-all hover:ring-black/[0.08]"
+                  className="flex items-center gap-4 rounded-2xl border border-border bg-surface p-4 shadow-sm transition-all hover:shadow-card"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-foreground">{itemSummary(o.order_items, "Order")}</p>
@@ -244,7 +244,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       <section>
         <h2 className="text-base font-medium text-foreground">Receipts</h2>
         {receipts.length === 0 ? (
-          <div className="mt-3 rounded-3xl bg-white p-6 text-center ring-1 ring-black/[0.04]">
+          <div className="mt-3 rounded-3xl border border-border bg-surface p-6 text-center shadow-card">
             <p className="text-sm text-text-secondary">No paid receipts yet</p>
           </div>
         ) : (
@@ -253,7 +253,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
               <li key={r.id}>
                 <Link
                   href={"/dashboard/receipts/" + r.id}
-                  className="flex items-center gap-4 rounded-2xl bg-white p-4 ring-1 ring-black/[0.04] transition-all hover:ring-black/[0.08]"
+                  className="flex items-center gap-4 rounded-2xl border border-border bg-surface p-4 shadow-sm transition-all hover:shadow-card"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-foreground">{itemSummary(r.order_items, "Receipt")}</p>

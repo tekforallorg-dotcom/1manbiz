@@ -74,7 +74,7 @@ export function ProductForm({ businessId }: { businessId: string }) {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         {/* Live preview */}
         <aside className="hm-rise order-first lg:order-2 lg:sticky lg:top-6 lg:self-start">
-          <div className="rounded-3xl bg-white p-4 ring-1 ring-black/[0.04] shadow-[0_20px_50px_-32px_rgba(0,0,0,0.3)]">
+          <div className="rounded-3xl border border-border bg-surface p-4 shadow-[0_20px_50px_-32px_rgba(0,0,0,0.3)]">
             <p className="px-1 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-text-muted">Live preview</p>
             <div className="mt-2 overflow-hidden rounded-2xl bg-gradient-to-b from-white to-surface-muted/40 ring-1 ring-black/[0.05]">
               <div className="relative m-2 aspect-square overflow-hidden rounded-xl bg-gradient-to-br from-surface-muted/60 via-white to-surface-muted/30 ring-1 ring-black/[0.03]">
@@ -130,7 +130,7 @@ export function ProductForm({ businessId }: { businessId: string }) {
         {/* Form */}
         <div className="order-last space-y-6 lg:order-1">
           {/* Photo */}
-          <section className="hm-rise rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+          <section className="hm-rise rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
             <h2 className="text-base font-medium text-foreground">Photo</h2>
             <p className="mt-1 text-xs text-text-secondary">Up to 2 MB. JPG, PNG, or WebP. You can change it later.</p>
             <div className="mt-5">
@@ -150,7 +150,7 @@ export function ProductForm({ businessId }: { businessId: string }) {
           </section>
 
           {/* Details */}
-          <section className="hm-rise rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8" style={{ animationDelay: "60ms" }}>
+          <section className="hm-rise rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8" style={{ animationDelay: "60ms" }}>
             <h2 className="text-base font-medium text-foreground">Details</h2>
             <div className="mt-5 space-y-5">
               <div>
@@ -193,7 +193,7 @@ export function ProductForm({ businessId }: { businessId: string }) {
           </section>
 
           {/* Pricing */}
-          <section className="hm-rise rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8" style={{ animationDelay: "120ms" }}>
+          <section className="hm-rise rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8" style={{ animationDelay: "120ms" }}>
             <h2 className="text-base font-medium text-foreground">{hasVariants ? "Pricing" : "Pricing & stock"}</h2>
             <div className="mt-5 grid gap-5 sm:grid-cols-2">
               <div>
@@ -252,7 +252,7 @@ export function ProductForm({ businessId }: { businessId: string }) {
           </section>
 
           {/* Variants */}
-          <section className="hm-rise rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8" style={{ animationDelay: "180ms" }}>
+          <section className="hm-rise rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8" style={{ animationDelay: "180ms" }}>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-base font-medium text-foreground">Variants</h2>

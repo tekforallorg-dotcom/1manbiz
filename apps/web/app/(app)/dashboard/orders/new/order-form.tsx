@@ -74,7 +74,7 @@ export function OrderForm(props: { customers: Customer[]; products: Product[] })
       <input type="hidden" name="items" value={JSON.stringify(itemsForSubmit)} />
       <input type="hidden" name="notes" value={notes} />
 
-      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+      <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <h2 className="text-base font-medium text-foreground">Customer</h2>
         <div className="mt-5">
           <Label htmlFor="customer-select">Pick a customer</Label>
@@ -90,7 +90,7 @@ export function OrderForm(props: { customers: Customer[]; products: Product[] })
         </div>
       </section>
 
-      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+      <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-medium text-foreground">Items</h2>
           <button type="button" onClick={addItem} className="inline-flex items-center gap-1 rounded-full bg-surface-muted px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-surface-muted/70">
@@ -145,7 +145,7 @@ export function OrderForm(props: { customers: Customer[]; products: Product[] })
         </div>
       </section>
 
-      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+      <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <Label htmlFor="notes">Notes <span className="font-normal text-text-muted">(optional)</span></Label>
         <textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={1000} rows={3} placeholder="Special instructions, delivery address, etc." className="mt-1.5 w-full resize-none rounded-xl border-0 bg-surface-muted px-4 py-3 text-sm text-foreground ring-1 ring-black/[0.06] transition-colors placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-primary/30" />
       </section>

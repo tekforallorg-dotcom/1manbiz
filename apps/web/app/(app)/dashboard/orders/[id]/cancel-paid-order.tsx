@@ -24,7 +24,7 @@ export function CancelPaidOrder({ orderId }: { orderId: string }) {
 
   if (confirming) {
     return (
-      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+      <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <h3 className="text-base font-medium text-foreground">Cancel this paid order?</h3>
         <p className="mt-2 text-sm text-text-secondary">
           This returns the items to stock and removes this sale from your revenue and from the customer totals. It does not refund the customer; send any refund to them separately.
@@ -42,7 +42,7 @@ export function CancelPaidOrder({ orderId }: { orderId: string }) {
   }
 
   return (
-    <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+    <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
       <h3 className="text-base font-medium text-foreground">Cancel order</h3>
       <p className="mt-2 text-sm text-text-secondary">Cancelling returns the items to stock and reverses the sale. Refund the customer separately.</p>
       {error ? (

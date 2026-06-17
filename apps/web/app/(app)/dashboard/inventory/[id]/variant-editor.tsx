@@ -103,7 +103,7 @@ export function VariantEditor({
 
   if (!editing) {
     return (
-      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+      <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-medium text-foreground">
             {"Variants" + (axisLabel ? " (" + axisLabel + ")" : "")}
@@ -148,7 +148,7 @@ export function VariantEditor({
   }
 
   return (
-    <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+    <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-medium text-foreground">
           {"Edit variants" + (axisLabel ? " (" + axisLabel + ")" : "")}

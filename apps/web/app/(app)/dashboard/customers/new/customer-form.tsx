@@ -19,7 +19,7 @@ export function CustomerForm() {
 
   return (
     <form action={formAction} className="space-y-6">
-      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+      <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <h2 className="text-base font-medium text-foreground">Contact</h2>
 
         <div className="mt-5 space-y-5">

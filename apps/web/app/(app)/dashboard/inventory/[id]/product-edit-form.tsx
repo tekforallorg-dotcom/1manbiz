@@ -51,7 +51,7 @@ export function ProductEditForm({
       <input type="hidden" name="image_path" value={imagePath ?? ""} />
       <input type="hidden" name="status" value={status} />
 
-      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+      <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <h2 className="text-base font-medium text-foreground">Product image</h2>
         <p className="mt-1 text-xs text-text-secondary">
           Up to 2 MB. JPG, PNG, or WebP.
@@ -76,7 +76,7 @@ export function ProductEditForm({
         ) : null}
       </section>
 
-      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+      <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <h2 className="text-base font-medium text-foreground">Details</h2>
 
         <div className="mt-5 space-y-5">
@@ -128,7 +128,7 @@ export function ProductEditForm({
         </div>
       </section>
 
-      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+      <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <h2 className="text-base font-medium text-foreground">Price & stock</h2>
 
         <div className="mt-5 grid gap-5 sm:grid-cols-2">
@@ -196,7 +196,7 @@ export function ProductEditForm({
         </div>
       </section>
 
-      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+      <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <h2 className="text-base font-medium text-foreground">Status</h2>
         <div className="mt-4 inline-flex rounded-full bg-surface-muted p-1 ring-1 ring-black/[0.06]">
           {(["active", "archived"] as const).map((s) => {

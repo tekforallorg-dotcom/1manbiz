@@ -90,7 +90,7 @@ export default async function OrderDetailPage(props: { params: Promise<{ id: str
         </Link>
       </div>
 
-      <header className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+      <header className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-[0.14em] text-text-muted">Order</p>
@@ -122,7 +122,7 @@ export default async function OrderDetailPage(props: { params: Promise<{ id: str
         </div>
       </header>
 
-      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+      <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <h2 className="text-base font-medium text-foreground">Items</h2>
         <ul className="mt-4 divide-y divide-black/[0.04]">
           {items.map((it) => (
@@ -147,7 +147,7 @@ export default async function OrderDetailPage(props: { params: Promise<{ id: str
       </section>
 
       {order.notes ? (
-        <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+        <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
           <h2 className="text-base font-medium text-foreground">Notes</h2>
           <p className="mt-3 whitespace-pre-wrap text-sm text-text-secondary">{order.notes}</p>
         </section>
