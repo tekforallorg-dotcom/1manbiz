@@ -18,7 +18,7 @@ const NAIRA = "\u20A6";
 // Concentric with the cards: card radius 24 + 8 frame padding = 32.
 const FRAME = {
   borderWidth: 2,
-  borderColor: "rgba(0, 168, 98, 0.45)",
+  borderColor: "rgba(21, 128, 61, 0.45)",
   backgroundColor: "#FFFFFF",
 } as const;
 

@@ -7,7 +7,7 @@
 
 export const colors = {
   brand: {
-    primary: "#00D26A",
+    primary: "#15803D",
     soft: "#F0FCF7",
     dark: "#00B85F",
   },
@@ -18,7 +18,7 @@ export const colors = {
   textSecondary: "#3A3A3A",
   // Flat aliases for mobile NativeWind classNames (added by MOB-DESIGN-1).
   // Web continues to use brand.* and foreground via Tailwind v4 CSS config.
-  primary: "#00D26A",
+  primary: "#15803D",
   primarySoft: "#F0FCF7",
   text: "#0A0A0A",
   border: "#E5E7EB",

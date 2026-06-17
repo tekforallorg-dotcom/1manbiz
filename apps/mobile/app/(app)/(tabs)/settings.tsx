@@ -257,7 +257,7 @@ export default function SettingsScreen() {
               value={autopay}
               onValueChange={setAutopay}
               disabled={mode !== "autonomous"}
-              trackColor={{ true: "#00D26A", false: "#D1D5DB" }}
+              trackColor={{ true: "#15803D", false: "#D1D5DB" }}
             />
           </View>
 
@@ -412,7 +412,7 @@ export default function SettingsScreen() {
             <Switch
               value={catalogueActive}
               onValueChange={setCatalogueActive}
-              trackColor={{ true: "#00D26A", false: "#D1D5DB" }}
+              trackColor={{ true: "#15803D", false: "#D1D5DB" }}
             />
           </View>
 
