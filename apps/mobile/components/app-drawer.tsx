@@ -82,8 +82,8 @@ export function AppDrawer({ open, onClose }: { open: boolean; onClose: () => voi
         style={[
           styles.card,
           {
-            right: 16,
-            bottom: insets.bottom + 72,
+            right: 8,
+            bottom: insets.bottom + 56,
             opacity: progress,
             transform: [{ translateY }, { scale }],
           },
