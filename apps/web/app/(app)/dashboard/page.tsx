@@ -5,6 +5,7 @@ import { Plus, ShoppingBag, Package, Users, ArrowRight, Clock } from "lucide-rea
 
 import { createClient } from "@/lib/supabase/server";
 import { formatNairaFromKobo } from "@/lib/format";
+import { MoneyFigure } from "@/components/money-figure";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,7 @@ function KpiCard(props: {
 }) {
   const warn = props.tone === "warning";
   return (
-    <div className="rounded-3xl bg-white p-5 ring-1 ring-black/[0.04] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_-16px_rgba(0,0,0,0.12)] sm:p-6">
+    <div className="rounded-3xl border border-border bg-surface p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover sm:p-6">
       <div
         className={
           "inline-grid size-9 place-items-center rounded-xl " +
@@ -63,7 +64,7 @@ function KpiCard(props: {
       <p className="mt-4 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-text-muted">{props.label}</p>
       <p
         className={
-          "mt-1 text-2xl font-semibold tabular-nums sm:text-3xl " + (warn ? "text-warning" : "text-foreground")
+          "mt-1.5 money-figure text-3xl " + (warn ? "text-warning" : "text-foreground")
         }
       >
         {props.value}
@@ -216,7 +217,7 @@ export default async function DashboardHome() {
 `}</style>
 
       <section className="hm-rise">
-        <div className="relative overflow-hidden rounded-3xl bg-[linear-gradient(135deg,#16A34A_0%,#15803D_50%,#064E3B_100%)] p-6 text-white shadow-[0_24px_60px_-30px_rgba(6,78,59,0.65)] sm:p-8">
+        <div className="relative overflow-hidden rounded-3xl bg-[linear-gradient(150deg,#00A862_0%,#05492F_55%,#06281E_100%)] p-6 text-white shadow-[0_30px_64px_-32px_rgba(6,40,30,0.55)] sm:p-8">
           <div className="pointer-events-none absolute -right-16 -top-24 size-64 rounded-full bg-white/10 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-24 -left-10 size-56 rounded-full bg-white/5 blur-3xl" />
           <div className="relative flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
@@ -227,8 +228,12 @@ export default async function DashboardHome() {
                 <span>{dateLabel}</span>
               </div>
               <p className="mt-5 text-[10.5px] font-semibold uppercase tracking-[0.16em] text-white/65">Revenue today</p>
-              <p className="mt-1.5 text-4xl font-semibold tabular-nums tracking-tight sm:text-5xl">
-                {formatNairaFromKobo(todayRevenueKobo)}
+              <p className="mt-1.5">
+                <MoneyFigure
+                  kobo={todayRevenueKobo}
+                  className="text-[2.6rem] leading-none sm:text-[3.4rem]"
+                  markClassName="opacity-70"
+                />
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-white/75">
                 <span>{todayOrdersCount + " order" + (todayOrdersCount === 1 ? "" : "s") + " today"}</span>
@@ -302,7 +307,7 @@ export default async function DashboardHome() {
 
       <section className="hm-rise" style={{ animationDelay: "180ms" }}>
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-medium text-foreground">Recent orders</h2>
+          <h2 className="font-display text-lg font-semibold text-foreground">Recent orders</h2>
           {recent.length > 0 ? (
             <Link
               href="/dashboard/orders"
@@ -315,7 +320,7 @@ export default async function DashboardHome() {
         </div>
 
         {recent.length === 0 ? (
-          <div className="mt-4 rounded-3xl bg-white p-10 text-center ring-1 ring-black/[0.04]">
+          <div className="mt-4 rounded-3xl border border-border bg-surface p-10 text-center shadow-card">
             <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-brand-soft text-brand-primary">
               <ShoppingBag size={22} strokeWidth={1.75} />
             </div>
@@ -339,7 +344,7 @@ export default async function DashboardHome() {
                 <li key={o.id}>
                   <Link
                     href={href}
-                    className="flex items-center gap-4 rounded-2xl bg-white p-4 ring-1 ring-black/[0.04] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_24px_-16px_rgba(0,0,0,0.12)] hover:ring-black/[0.08] sm:gap-5 sm:p-5"
+                    className="flex items-center gap-4 rounded-2xl border border-border bg-surface p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card sm:gap-5 sm:p-5"
                   >
                     <div className="grid size-11 shrink-0 place-items-center rounded-full bg-surface-muted text-sm font-medium text-text-secondary">
                       {initial}

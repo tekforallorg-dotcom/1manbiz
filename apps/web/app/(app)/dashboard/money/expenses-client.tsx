@@ -166,7 +166,7 @@ export function ExpensesClient({
 
   return (
     <div className="space-y-6">
-      <section className="rounded-3xl bg-white p-5 ring-1 ring-black/[0.04] sm:p-6">
+      <section className="rounded-3xl border border-border bg-surface p-5 shadow-card sm:p-6">
         <h2 className="text-sm font-semibold text-foreground">Add an expense</h2>
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Amount">
@@ -209,7 +209,7 @@ export function ExpensesClient({
             />
           </Field>
         </div>
-        {addError ? <p className="mt-3 text-sm text-red-600">{addError}</p> : null}
+        {addError ? <p className="mt-3 text-sm text-error">{addError}</p> : null}
         <div className="mt-4">
           <button
             type="button"
@@ -223,7 +223,7 @@ export function ExpensesClient({
         </div>
       </section>
 
-      <section className="rounded-3xl bg-white ring-1 ring-black/[0.04]">
+      <section className="rounded-3xl border border-border bg-surface shadow-card">
         <div className="flex items-center justify-between border-b border-border px-5 py-4 sm:px-6">
           <h2 className="text-sm font-semibold text-foreground">Expenses</h2>
           <p className="text-sm tabular-nums text-text-muted">
@@ -297,7 +297,7 @@ export function ExpensesClient({
                         </Field>
                       </div>
                       {editError ? (
-                        <p className="text-sm text-red-600">{editError}</p>
+                        <p className="text-sm text-error">{editError}</p>
                       ) : null}
                       <div className="flex items-center gap-2">
                         <button

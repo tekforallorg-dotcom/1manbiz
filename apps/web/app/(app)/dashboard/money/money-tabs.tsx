@@ -25,7 +25,7 @@ export function MoneyTabs({ active }: { active: "overview" | "expenses" }) {
             className={
               "rounded-full px-4 py-1.5 text-[12.5px] font-semibold transition-colors " +
               (on
-                ? "bg-white text-foreground shadow-sm"
+                ? "bg-surface text-foreground shadow-sm"
                 : "text-text-secondary hover:text-foreground")
             }
           >

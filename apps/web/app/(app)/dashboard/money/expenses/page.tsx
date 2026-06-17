@@ -51,8 +51,10 @@ export default async function ExpensesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Money</h1>
-        <p className="mt-1 text-sm text-text-muted">
+        <h1 className="font-display text-[1.9rem] font-semibold leading-none tracking-tight text-foreground">
+          Money
+        </h1>
+        <p className="mt-2 text-sm text-text-muted">
           Record what you spend to see your real profit.
         </p>
       </div>

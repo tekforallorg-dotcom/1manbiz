@@ -5,6 +5,7 @@ import { Clock, Receipt, Plus } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { formatNairaFromKobo } from "@/lib/format";
+import { MoneyFigure } from "@/components/money-figure";
 
 import { MoneyTabs } from "./money-tabs";
 
@@ -35,24 +36,20 @@ function resolvePeriod(raw: string | undefined): Period {
   return { key: "30d", days: 30, label: "30D" }; // default
 }
 
-function signedNaira(kobo: number): string {
-  return (kobo < 0 ? "-" : "") + formatNairaFromKobo(Math.abs(kobo));
-}
-
 function MoneyKpi(props: {
   label: string;
-  value: string;
+  value: ReactNode;
   subtitle?: string;
   icon: ReactNode;
   tone?: "default" | "warning";
 }) {
   const warn = props.tone === "warning";
   return (
-    <div className="rounded-3xl bg-white p-5 ring-1 ring-black/[0.04] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_-16px_rgba(0,0,0,0.12)] sm:p-6">
+    <div className="group rounded-3xl border border-border bg-surface p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover sm:p-6">
       <div
         className={
           "inline-grid size-9 place-items-center rounded-xl " +
-          (warn ? "bg-warning/15 text-warning" : "bg-surface-muted text-text-secondary")
+          (warn ? "bg-warning/12 text-warning" : "bg-surface-muted text-text-secondary")
         }
       >
         {props.icon}
@@ -62,14 +59,13 @@ function MoneyKpi(props: {
       </p>
       <p
         className={
-          "mt-1 text-2xl font-semibold tabular-nums sm:text-3xl " +
-          (warn ? "text-warning" : "text-foreground")
+          "mt-1.5 text-3xl " + (warn ? "text-warning" : "text-foreground")
         }
       >
         {props.value}
       </p>
       {props.subtitle ? (
-        <p className="mt-0.5 text-xs tabular-nums text-text-muted">{props.subtitle}</p>
+        <p className="mt-1 text-xs tabular-nums text-text-muted">{props.subtitle}</p>
       ) : null}
     </div>
   );
@@ -139,25 +135,20 @@ export default async function MoneyPage({
   const receiptsCount = receiptsRes.count ?? 0;
 
   const hasActivity = incomeRows.length > 0 || expenseRows.length > 0;
+  const isProfit = profitKobo >= 0;
 
-  const profitWord = profitKobo >= 0 ? "profit" : "loss";
-  const outstandingSentence =
-    outstandingKobo > 0
-      ? " " +
-        formatNairaFromKobo(outstandingKobo) +
-        " is still outstanding from " +
-        outstandingCount +
-        (outstandingCount === 1 ? " unpaid order." : " unpaid orders.")
-      : "";
   const summary = hasActivity
-    ? "You made " +
-      signedNaira(profitKobo) +
-      " " +
-      profitWord +
-      " in the last " +
-      period.days +
-      " days." +
-      outstandingSentence
+    ? isProfit
+      ? "You are keeping " +
+        formatNairaFromKobo(profitKobo) +
+        " of what came in over the last " +
+        period.days +
+        " days."
+      : "You spent " +
+        formatNairaFromKobo(Math.abs(profitKobo)) +
+        " more than you brought in over the last " +
+        period.days +
+        " days."
     : "No paid orders or expenses recorded in the last " + period.days + " days yet.";
 
   return (
@@ -170,9 +161,11 @@ export default async function MoneyPage({
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Money</h1>
-          <p className="mt-1 text-sm text-text-muted">
-            What came in, what went out, what you made.
+          <h1 className="font-display text-[1.9rem] font-semibold leading-none tracking-tight text-foreground">
+            Money
+          </h1>
+          <p className="mt-2 text-sm text-text-muted">
+            What came in, what went out, what you kept.
           </p>
         </div>
         <div className="inline-flex rounded-full bg-surface-muted p-1">
@@ -185,7 +178,7 @@ export default async function MoneyPage({
                 className={
                   "rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold transition-colors " +
                   (active
-                    ? "bg-white text-foreground shadow-sm"
+                    ? "bg-surface text-foreground shadow-sm"
                     : "text-text-secondary hover:text-foreground")
                 }
               >
@@ -207,56 +200,65 @@ export default async function MoneyPage({
         </Link>
       </div>
 
+      {/* Hero: profit is the thesis. The amount leads; money in / out support. */}
       <section className="hm-rise">
-        <div className="relative overflow-hidden rounded-3xl bg-[linear-gradient(135deg,#16A34A_0%,#15803D_50%,#064E3B_100%)] p-6 text-white shadow-[0_24px_60px_-30px_rgba(6,78,59,0.65)] sm:p-8">
-          <div className="pointer-events-none absolute -right-16 -top-24 size-64 rounded-full bg-white/10 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-24 -left-10 size-56 rounded-full bg-white/5 blur-3xl" />
-          <div className="relative grid grid-cols-1 gap-6 sm:grid-cols-3">
-            <div>
-              <p className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-white/65">
-                Money in
-              </p>
-              <p className="mt-1.5 text-2xl font-semibold tabular-nums tracking-tight sm:text-3xl">
-                {formatNairaFromKobo(incomeKobo)}
-              </p>
-              <p className="mt-0.5 text-xs text-white/70">From paid orders</p>
+        <div className="relative overflow-hidden rounded-3xl bg-[linear-gradient(150deg,#00A862_0%,#05492F_55%,#06281E_100%)] p-6 text-white shadow-[0_30px_64px_-32px_rgba(6,40,30,0.55)] sm:p-8">
+          <div className="pointer-events-none absolute -right-20 -top-28 size-72 rounded-full bg-white/10 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-28 -left-12 size-60 rounded-full bg-white/5 blur-3xl" />
+
+          <div className="relative">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/70">
+              {isProfit ? "Profit" : "Loss"} · last {period.days} days
+            </p>
+            <div className="mt-2.5">
+              <MoneyFigure
+                kobo={profitKobo}
+                className="text-[2.85rem] leading-[0.95] sm:text-[3.6rem]"
+                markClassName="opacity-70"
+              />
             </div>
-            <div>
-              <p className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-white/65">
-                Money out
-              </p>
-              <p className="mt-1.5 text-2xl font-semibold tabular-nums tracking-tight sm:text-3xl">
-                {formatNairaFromKobo(expensesKobo)}
-              </p>
-              <p className="mt-0.5 text-xs text-white/70">Recorded expenses</p>
+            {/* Signature gold ledger rule under the headline number */}
+            <div className="ledger-rule mt-4 w-28 opacity-90" />
+
+            <div className="mt-6 grid max-w-md grid-cols-2 gap-5">
+              <div>
+                <p className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-white/60">
+                  Money in
+                </p>
+                <p className="mt-1.5">
+                  <MoneyFigure kobo={incomeKobo} className="text-xl sm:text-2xl" markClassName="opacity-60" />
+                </p>
+                <p className="mt-0.5 text-xs text-white/65">From paid orders</p>
+              </div>
+              <div className="border-l border-white/15 pl-5">
+                <p className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-white/60">
+                  Money out
+                </p>
+                <p className="mt-1.5">
+                  <MoneyFigure kobo={expensesKobo} className="text-xl sm:text-2xl" markClassName="opacity-60" />
+                </p>
+                <p className="mt-0.5 text-xs text-white/65">Recorded expenses</p>
+              </div>
             </div>
-            <div className="sm:border-l sm:border-white/15 sm:pl-6">
-              <p className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-white/80">
-                {profitKobo >= 0 ? "Profit" : "Loss"}
-              </p>
-              <p className="mt-1.5 text-3xl font-semibold tabular-nums tracking-tight sm:text-4xl">
-                {signedNaira(profitKobo)}
-              </p>
-              <p className="mt-0.5 text-xs text-white/70">Money in minus money out</p>
-            </div>
+
+            <p className="mt-6 max-w-2xl border-t border-white/15 pt-4 text-sm leading-relaxed text-white/85">
+              {summary}
+            </p>
           </div>
-          <p className="relative mt-6 max-w-2xl border-t border-white/15 pt-4 text-sm text-white/85">
-            {summary}
-          </p>
         </div>
       </section>
 
       <section className="hm-rise grid grid-cols-1 gap-4 sm:grid-cols-2">
         <MoneyKpi
           label="Outstanding"
-          value={formatNairaFromKobo(outstandingKobo)}
+          value={<MoneyFigure kobo={outstandingKobo} />}
           subtitle={outstandingCount + (outstandingCount === 1 ? " unpaid order" : " unpaid orders")}
           icon={<Clock className="h-5 w-5" strokeWidth={1.75} />}
           tone={outstandingKobo > 0 ? "warning" : "default"}
         />
         <MoneyKpi
           label="Receipts"
-          value={String(receiptsCount)}
+          value={<span className="money-figure">{receiptsCount}</span>}
           subtitle={"Issued in the last " + period.days + " days"}
           icon={<Receipt className="h-5 w-5" strokeWidth={1.75} />}
         />
