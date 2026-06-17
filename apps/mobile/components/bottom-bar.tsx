@@ -35,7 +35,7 @@ export function BottomBar({
   const activeName = bar.state.routes[bar.state.index]?.name;
 
   return (
-    <View style={[styles.bar, { paddingBottom: (insets.bottom || 8) }]}>
+    <View style={[styles.bar, { paddingBottom: insets.bottom || 8 }]}>
       {PINNED.map((name) => {
         const item = NAV_ITEMS.find((i) => i.name === name);
         if (!item) return null;
@@ -61,8 +61,11 @@ export function BottomBar({
             onPress={onPress}
             accessibilityRole="button"
             accessibilityLabel={item.label}
+            accessibilityState={{ selected: active }}
           >
-            <Icon size={22} color={tint} />
+            <View style={[styles.iconWrap, active && styles.iconWrapActive]}>
+              <Icon size={22} color={tint} />
+            </View>
             <Text style={[styles.label, { color: tint }]}>{item.label}</Text>
           </Pressable>
         );
@@ -73,8 +76,11 @@ export function BottomBar({
         onPress={onMenu}
         accessibilityRole="button"
         accessibilityLabel="Open menu"
+        accessibilityState={{ selected: menuActive }}
       >
-        <Menu size={22} color={menuActive ? colors.primary : INACTIVE} />
+        <View style={[styles.iconWrap, menuActive && styles.iconWrapActive]}>
+          <Menu size={22} color={menuActive ? colors.primary : INACTIVE} />
+        </View>
         <Text style={[styles.label, { color: menuActive ? colors.primary : INACTIVE }]}>
           Menu
         </Text>
@@ -95,7 +101,15 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 2,
+    gap: 3,
+  },
+  iconWrap: {
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  iconWrapActive: {
+    backgroundColor: colors.primarySoft,
   },
   label: {
     fontSize: 11,

@@ -36,4 +36,18 @@ export const NAV_ITEMS: NavItem[] = [
   { name: "settings", label: "Settings", route: "/settings", icon: Settings },
 ];
 
+// Always-visible bottom bar destinations (plus the Menu button).
 export const PINNED: string[] = ["home", "conversations", "orders"];
+
+// The drawer holds everything not pinned, organised into labelled groups.
+// Pinned destinations are intentionally not repeated here (they live on the
+// bar). Settings is pinned to the drawer footer so it never scrolls off.
+export type NavGroup = { heading: string; items: string[] };
+
+export const DRAWER_GROUPS: NavGroup[] = [
+  { heading: "Sell", items: ["bookings", "inventory", "customers", "receipts"] },
+  { heading: "Money", items: ["money", "insights"] },
+  { heading: "Assistant", items: ["bizbot"] },
+];
+
+export const DRAWER_FOOTER: string[] = ["settings"];

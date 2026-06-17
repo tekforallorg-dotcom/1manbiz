@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import {
   Animated,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -11,9 +12,9 @@ import { usePathname, useRouter, type Href } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
 import { colors } from "@1manbiz/design";
 
-import { NAV_ITEMS } from "./nav-items";
+import { NAV_ITEMS, DRAWER_GROUPS, DRAWER_FOOTER } from "./nav-items";
 
-const MENU_WIDTH = 244;
+const MENU_WIDTH = 260;
 
 export function AppDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
@@ -31,7 +32,7 @@ export function AppDrawer({ open, onClose }: { open: boolean; onClose: () => voi
     }).start();
   }, [open, progress]);
 
-  // Floating popover: fade + small rise + subtle scale, anchored to the bottom right.
+  // Floating popover: fade + small rise + subtle scale, anchored bottom right.
   const translateY = progress.interpolate({ inputRange: [0, 1], outputRange: [16, 0] });
   const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] });
   const backdropOpacity = progress.interpolate({ inputRange: [0, 1], outputRange: [0, 0.18] });
@@ -40,6 +41,29 @@ export function AppDrawer({ open, onClose }: { open: boolean; onClose: () => voi
     onClose();
     router.push(route as Href);
   };
+
+  function renderRow(name: string) {
+    const item = NAV_ITEMS.find((i) => i.name === name);
+    if (!item) return null;
+    const Icon = item.icon;
+    const active = pathname === item.route || pathname.startsWith(item.route + "/");
+    return (
+      <Pressable
+        key={item.name}
+        onPress={() => go(item.route)}
+        accessibilityRole="button"
+        accessibilityLabel={item.label}
+        accessibilityState={{ selected: active }}
+        style={[styles.row, active && styles.rowActive]}
+      >
+        <View style={[styles.iconBox, active && styles.iconBoxActive]}>
+          <Icon size={17} color={active ? colors.primary : colors.textMuted} />
+        </View>
+        <Text style={[styles.label, active && styles.labelActive]}>{item.label}</Text>
+        <ChevronRight size={15} color={active ? colors.primary : colors.textMuted} />
+      </Pressable>
+    );
+  }
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents={open ? "auto" : "none"}>
@@ -70,34 +94,21 @@ export function AppDrawer({ open, onClose }: { open: boolean; onClose: () => voi
           <Text style={styles.subtitle}>Move around your business</Text>
         </View>
 
-        <View style={styles.list}>
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const active =
-              pathname === item.route || pathname.startsWith(item.route + "/");
-            return (
-              <Pressable
-                key={item.name}
-                onPress={() => go(item.route)}
-                accessibilityRole="button"
-                accessibilityLabel={item.label}
-                accessibilityState={{ selected: active }}
-                style={[styles.row, active && styles.rowActive]}
-              >
-                <View style={[styles.iconBox, active && styles.iconBoxActive]}>
-                  <Icon size={17} color={active ? colors.primary : colors.textMuted} />
-                </View>
-                <Text style={[styles.label, active && styles.labelActive]}>
-                  {item.label}
-                </Text>
-                <ChevronRight
-                  size={15}
-                  color={active ? colors.primary : colors.textMuted}
-                />
-              </Pressable>
-            );
-          })}
-        </View>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          {DRAWER_GROUPS.map((group) => (
+            <View key={group.heading} style={styles.group}>
+              <Text style={styles.groupHeading}>{group.heading}</Text>
+              {group.items.map((name) => renderRow(name))}
+            </View>
+          ))}
+        </ScrollView>
+
+        <View style={styles.footer}>{DRAWER_FOOTER.map((name) => renderRow(name))}</View>
       </Animated.View>
     </View>
   );
@@ -127,7 +138,7 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   title: {
     fontSize: 15,
@@ -141,8 +152,30 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: colors.textMuted,
   },
-  list: {
-    gap: 2,
+  scroll: {
+    maxHeight: 392,
+  },
+  scrollContent: {
+    paddingBottom: 2,
+  },
+  group: {
+    marginTop: 4,
+  },
+  groupHeading: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    color: colors.textMuted,
+    paddingHorizontal: 10,
+    paddingTop: 6,
+    paddingBottom: 4,
+  },
+  footer: {
+    marginTop: 4,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
   row: {
     flexDirection: "row",
