@@ -8,6 +8,8 @@ import { fetchProducts, type ProductFilter, type Product } from "../../../lib/pr
 import { ProductRow } from "../../../components/product-row";
 import { StatusFilter } from "../../../components/status-filter";
 import { Plus } from "lucide-react-native";
+import { formatNaira } from "../../../lib/format";
+import { SummaryStrip } from "../../../components/summary-strip";
 
 const FILTER_OPTIONS: { value: ProductFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -69,6 +71,19 @@ export default function InventoryScreen() {
         contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 24 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#9CA3AF" />}
       >
+        {products && products.length > 0 ? (
+          <SummaryStrip
+            items={[
+              { label: "Stock value", value: formatNaira(products.reduce((sum, p) => sum + p.price_kobo * p.stock_quantity, 0)), tone: "lead" },
+              { label: "Products", value: String(products.length) },
+              {
+                label: "Low stock",
+                value: String(products.filter((p) => p.status === "active" && p.stock_quantity <= 5).length),
+                tone: products.some((p) => p.status === "active" && p.stock_quantity <= 5) ? "warn" : "default",
+              },
+            ]}
+          />
+        ) : null}
         {loading && !products ? (
           <Text className="text-textMuted text-sm">Loading products…</Text>
         ) : products && products.length === 0 ? (

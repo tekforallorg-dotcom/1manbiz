@@ -12,14 +12,7 @@ import {
 } from "../../../lib/conversations";
 import { supabase } from "../../../lib/supabase";
 import { ConversationRow } from "../../../components/conversation-row";
-
-const CARD_SHADOW = {
-  shadowColor: "#0B0B0B",
-  shadowOpacity: 0.06,
-  shadowRadius: 14,
-  shadowOffset: { width: 0, height: 6 },
-  elevation: 2,
-} as const;
+import { SummaryStrip } from "../../../components/summary-strip";
 
 type ChannelState = "unknown" | "not_connected" | "connected";
 type Filter = "all" | "unread";
@@ -178,6 +171,21 @@ export default function ConversationsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={designColors.primary} />
         }
       >
+        {conversations.length > 0 ? (
+          <View className="px-6">
+            <SummaryStrip
+              items={[
+                { label: "Chats", value: String(conversations.length), tone: "lead" },
+                {
+                label: "Unread",
+                value: String(conversations.filter((c) => c.unread_count > 0).length),
+                tone: conversations.some((c) => c.unread_count > 0) ? "warn" : "default",
+              },
+                { label: "Open", value: String(conversations.filter((c) => c.status === "open").length) },
+              ]}
+            />
+          </View>
+        ) : null}
         {loading && !refreshing ? (
           <View className="pt-16 items-center">
             <ActivityIndicator color={designColors.primary} />
@@ -214,7 +222,7 @@ export default function ConversationsScreen() {
             </Text>
           </View>
         ) : (
-          <View className="mx-6 bg-white rounded-3xl overflow-hidden" style={CARD_SHADOW}>
+          <View className="mx-6 bg-white rounded-3xl overflow-hidden border border-borderStrong">
             {filtered.map((c, idx) => (
               <View key={c.id} className={idx === 0 ? "" : "border-t border-gray-100"}>
                 <ConversationRow conversation={c} />

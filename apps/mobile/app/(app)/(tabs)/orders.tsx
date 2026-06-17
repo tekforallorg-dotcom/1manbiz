@@ -10,6 +10,8 @@ import { fetchOrders, type OrderFilter } from "../../../lib/orders";
 import type { RecentOrder } from "../../../lib/dashboard";
 import { OrderRow } from "../../../components/order-row";
 import { StatusFilter } from "../../../components/status-filter";
+import { formatNaira } from "../../../lib/format";
+import { SummaryStrip } from "../../../components/summary-strip";
 
 const FILTER_OPTIONS: { value: OrderFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -72,6 +74,19 @@ export default function OrdersScreen() {
         contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 24 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#9CA3AF" />}
       >
+        {orders && orders.length > 0 ? (
+          <SummaryStrip
+            items={[
+              { label: "Orders", value: String(orders.length), tone: "lead" },
+              { label: "Value", value: formatNaira(orders.reduce((sum, o) => sum + (o.subtotal_kobo || 0), 0)) },
+              {
+                label: "Pending",
+                value: String(orders.filter((o) => o.status === "pending").length),
+                tone: orders.some((o) => o.status === "pending") ? "warn" : "default",
+              },
+            ]}
+          />
+        ) : null}
         {loading && !orders ? (
           <Text className="text-textMuted text-sm">Loading orders…</Text>
         ) : orders && orders.length === 0 ? (
