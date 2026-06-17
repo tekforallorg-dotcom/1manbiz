@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -11,6 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useNotifier } from "../../../components/notifier";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { ChevronLeft, ImagePlus } from "lucide-react-native";
@@ -23,6 +23,7 @@ import { pickAndUploadProductImage } from "../../../lib/product-image";
 
 export default function NewProductScreen() {
   const router = useRouter();
+  const { notify } = useNotifier();
   const insets = useSafeAreaInsets();
   const { session } = useSession();
   const userId = session?.user?.id;
@@ -59,7 +60,7 @@ export default function NewProductScreen() {
     const bid = businessId ?? (await getActiveBusinessId(userId));
     if (!bid) {
       setSaving(false);
-      Alert.alert("No business", "Could not find your active business. Reopen the app and try again.");
+      notify({ type: "error", title: "No business", message: "Could not find your active business. Reopen the app and try again." });
       return;
     }
     const result = await createProduct(bid, {
@@ -71,7 +72,7 @@ export default function NewProductScreen() {
     });
     setSaving(false);
     if (!result.ok) {
-      Alert.alert("Could not save", result.error);
+      notify({ type: "error", title: "Could not save", message: result.error });
       return;
     }
     router.back();
@@ -81,7 +82,7 @@ export default function NewProductScreen() {
     if (uploadingImage) return;
     const bid = businessId ?? (userId ? await getActiveBusinessId(userId) : null);
     if (!bid) {
-      Alert.alert("No business", "Could not find your active business yet. Try again in a moment.");
+      notify({ type: "error", title: "No business", message: "Could not find your active business yet. Try again in a moment." });
       return;
     }
     setUploadingImage(true);
@@ -89,7 +90,7 @@ export default function NewProductScreen() {
     setUploadingImage(false);
     if (res.status === "cancelled") return;
     if (res.status === "error") {
-      Alert.alert("Image not added", res.message);
+      notify({ type: "error", title: "Image not added", message: res.message });
       return;
     }
     setImagePath(res.path);

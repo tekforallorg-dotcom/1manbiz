@@ -3,7 +3,6 @@ import { ChevronRight, ImagePlus } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -11,6 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useNotifier } from "../../../components/notifier";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { QtyStepper } from "../../../components/qty-stepper";
 import { ScreenHeader } from "../../../components/screen-header";
@@ -32,6 +32,7 @@ import { useSession } from "../../../lib/session";
 export default function EditProductScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { notify } = useNotifier();
 
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
@@ -123,10 +124,7 @@ export default function EditProductScreen() {
     const bid =
       businessId ?? (userId ? await getActiveBusinessId(userId) : null);
     if (!bid) {
-      Alert.alert(
-        "No business",
-        "Could not find your active business yet. Try again in a moment.",
-      );
+      notify({ type: "error", title: "No business", message: "Could not find your active business yet. Try again in a moment." });
       return;
     }
     setUploadingImage(true);
@@ -134,7 +132,7 @@ export default function EditProductScreen() {
     setUploadingImage(false);
     if (res.status === "cancelled") return;
     if (res.status === "error") {
-      Alert.alert("Image not added", res.message);
+      notify({ type: "error", title: "Image not added", message: res.message });
       return;
     }
     setImagePath(res.path);
@@ -160,7 +158,7 @@ export default function EditProductScreen() {
     });
     setSaving(false);
     if (!result.ok) {
-      Alert.alert("Could not save", result.error);
+      notify({ type: "error", title: "Could not save", message: result.error });
       return;
     }
     router.back();

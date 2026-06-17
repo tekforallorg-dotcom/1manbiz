@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   Switch,
@@ -9,6 +8,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useNotifier } from "../../../components/notifier";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Plus, Trash2, X } from "lucide-react-native";
@@ -29,6 +29,7 @@ import {
 
 export default function ProductOptionsScreen() {
   const router = useRouter();
+  const { notify } = useNotifier();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { session } = useSession();
   const userId = session?.user?.id;
@@ -153,7 +154,7 @@ export default function ProductOptionsScreen() {
     const result = await saveVariantSetup(businessId, id, { options, variants });
     setSaving(false);
     if (!result.ok) {
-      Alert.alert("Could not save", result.error);
+      notify({ type: "error", title: "Could not save", message: result.error });
       return;
     }
     router.back();

@@ -1,7 +1,8 @@
 import { useCallback, useState } from "react";
 import {
-  View, Text, ScrollView, ActivityIndicator, Pressable, Alert, Linking, Share,
+  View, Text, ScrollView, ActivityIndicator, Pressable, Linking, Share,
 } from "react-native";
+import { useNotifier } from "../../../components/notifier";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { ExternalLink, Share2 } from "lucide-react-native";
@@ -31,6 +32,7 @@ const WEB_BASE = API_BASE_URL;
 export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [order, setOrder] = useState<OrderDetail | null>(null);
+  const { notify } = useNotifier();
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [marking, setMarking] = useState(false);
@@ -70,7 +72,7 @@ export default function OrderDetailScreen() {
       setOrder(original);
       setMarking(false);
       setConfirmingPaid(false);
-      Alert.alert("Could not mark as paid", result.error ?? "Please try again.");
+      notify({ type: "error", title: "Could not mark as paid", message: result.error ?? "Please try again." });
       return;
     }
     const refreshed = await fetchOrderDetail(order.id);
@@ -86,7 +88,7 @@ export default function OrderDetailScreen() {
     if (!result.ok) {
       setCancelling(false);
       setConfirmingCancel(false);
-      Alert.alert("Could not cancel order", result.error ?? "Please try again.");
+      notify({ type: "error", title: "Could not cancel order", message: result.error ?? "Please try again." });
       return;
     }
     const refreshed = await fetchOrderDetail(order.id);

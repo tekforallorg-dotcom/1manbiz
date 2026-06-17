@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  View, Text, ScrollView, Pressable, ActivityIndicator, Alert, TextInput,
+  View, Text, ScrollView, Pressable, ActivityIndicator, TextInput,
 } from "react-native";
+import { useNotifier } from "../../../components/notifier";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { UserPlus, Plus, X } from "lucide-react-native";
@@ -29,6 +30,7 @@ interface CartItem extends NewOrderLine {
 
 export default function NewOrderScreen() {
   const router = useRouter();
+  const { notify } = useNotifier();
   const { session } = useSession();
   const userId = session?.user?.id;
 
@@ -109,16 +111,16 @@ export default function NewOrderScreen() {
     setSaving(false);
 
     if (result.error && !result.id) {
-      Alert.alert("Could not save order", result.error);
+      notify({ type: "error", title: "Could not save order", message: result.error });
       return;
     }
     if (!result.id) {
-      Alert.alert("Could not save order", "Unexpected error. Please try again.");
+      notify({ type: "error", title: "Could not save order", message: "Unexpected error. Please try again." });
       return;
     }
     if (result.error) {
       // Order created but items failed. warn and still navigate
-      Alert.alert("Order saved with issues", result.error);
+      notify({ type: "info", title: "Order saved with issues", message: result.error });
     }
     router.replace(`/orders/${result.id}`);
   };
