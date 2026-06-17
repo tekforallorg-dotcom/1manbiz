@@ -78,7 +78,7 @@ export function OrderForm(props: { customers: Customer[]; products: Product[] })
         <h2 className="text-base font-medium text-foreground">Customer</h2>
         <div className="mt-5">
           <Label htmlFor="customer-select">Pick a customer</Label>
-          <select id="customer-select" value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="mt-1.5 w-full rounded-xl border-0 bg-surface-muted px-4 py-3 text-sm text-foreground ring-1 ring-black/[0.06] transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/30" aria-invalid={Boolean(state.fieldErrors?.customer_id)}>
+          <select id="customer-select" value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="mt-1.5 w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20" aria-invalid={Boolean(state.fieldErrors?.customer_id)}>
             <option value="">Select a customer...</option>
             {customers.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
@@ -147,7 +147,7 @@ export function OrderForm(props: { customers: Customer[]; products: Product[] })
 
       <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <Label htmlFor="notes">Notes <span className="font-normal text-text-muted">(optional)</span></Label>
-        <textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={1000} rows={3} placeholder="Special instructions, delivery address, etc." className="mt-1.5 w-full resize-none rounded-xl border-0 bg-surface-muted px-4 py-3 text-sm text-foreground ring-1 ring-black/[0.06] transition-colors placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-primary/30" />
+        <textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={1000} rows={3} placeholder="Special instructions, delivery address, etc." className="mt-1.5 w-full resize-none rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors placeholder:text-text-muted focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20" />
       </section>
 
       {state.status === "error" && state.error ? (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Notice } from "@/components/notice";
 
 type LinkState = {
   code: string;
@@ -72,7 +73,7 @@ export function ManageWhatsAppCard() {
   }
 
   return (
-    <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+    <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
       <h2 className="text-base font-medium text-foreground">Manage by WhatsApp</h2>
       <p className="mt-1 text-sm text-text-secondary">
         Run your shop from your own WhatsApp: ask for sales and stock, restock by message or photo.
@@ -130,7 +131,7 @@ export function ManageWhatsAppCard() {
         </div>
 
         {error ? (
-          <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">{error}</div>
+          <Notice variant="error">{error}</Notice>
         ) : null}
       </div>
     </section>

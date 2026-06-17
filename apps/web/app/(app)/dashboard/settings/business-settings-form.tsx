@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { Notice } from "@/components/notice";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,7 +62,7 @@ export function BusinessSettingsForm({ business }: { business: Business }) {
       <input type="hidden" name="logo_path" value={logoPath ?? ""} />
 
       {/* Logo */}
-      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+      <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <h2 className="text-base font-medium text-foreground">Logo</h2>
         <p className="mt-1 text-xs text-text-secondary">
           Up to 1 MB. JPG, PNG, or WebP. Square images look best.
@@ -85,7 +86,7 @@ export function BusinessSettingsForm({ business }: { business: Business }) {
       </section>
 
       {/* Profile */}
-      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+      <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <h2 className="text-base font-medium text-foreground">
           Business profile
         </h2>
@@ -129,7 +130,7 @@ export function BusinessSettingsForm({ business }: { business: Business }) {
 
           <div>
             <Label htmlFor="slug">Public URL handle</Label>
-            <div className="mt-1.5 flex items-stretch rounded-xl ring-1 ring-black/[0.06] focus-within:ring-2 focus-within:ring-brand-primary/30">
+            <div className="mt-1.5 flex items-stretch rounded-xl border border-border focus-within:border-brand-primary focus-within:ring-2 focus-within:ring-brand-primary/20">
               <span className="grid place-items-center rounded-l-xl bg-surface-muted px-3 font-mono text-xs text-text-muted sm:text-sm">
                 /c/
               </span>
@@ -195,7 +196,7 @@ export function BusinessSettingsForm({ business }: { business: Business }) {
       </section>
 
       {/* Fulfillment */}
-      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+      <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <h2 className="text-base font-medium text-foreground">Fulfillment</h2>
         <p className="mt-1 text-xs text-text-secondary">
           How customers receive orders. BizBot offers these when it confirms an
@@ -245,7 +246,7 @@ export function BusinessSettingsForm({ business }: { business: Business }) {
             maxLength={300}
             defaultValue={business.address ?? ""}
             placeholder="e.g. 12 Admiralty Way, Lekki Phase 1, Lagos"
-            className="mt-1.5 w-full rounded-xl border-0 bg-white px-3 py-3 text-sm text-foreground ring-1 ring-black/[0.06] placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+            className="mt-1.5 w-full rounded-xl border border-border bg-surface px-3 py-3 text-sm text-foreground outline-none transition-colors placeholder:text-text-muted focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
             aria-invalid={Boolean(state.fieldErrors?.address)}
           />
           {state.fieldErrors?.address ? (
@@ -261,7 +262,7 @@ export function BusinessSettingsForm({ business }: { business: Business }) {
       </section>
 
       {/* Catalogue visibility */}
-      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+      <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <h2 className="text-base font-medium text-foreground">
           Catalogue visibility
         </h2>
@@ -286,9 +287,7 @@ export function BusinessSettingsForm({ business }: { business: Business }) {
 
       {/* Form-level error / success */}
       {state.status === "error" && state.error ? (
-        <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">
-          {state.error}
-        </div>
+        <Notice variant="error">{state.error}</Notice>
       ) : null}
       {state.status === "success" ? (
         <div className="rounded-xl bg-brand-soft px-4 py-3 text-sm text-brand-dark ring-1 ring-brand-primary/20">

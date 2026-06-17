@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Notice } from "@/components/notice";
 import { Check, X, Link2 } from "lucide-react";
 
 import { cancelOrderAction, markOrderPaidAction, sendPaymentLinkAction } from "../actions";
@@ -95,7 +96,7 @@ export function OrderActionsBar({ orderId }: { orderId: string }) {
       <p className="mt-2 text-sm text-text-secondary">This order is still pending. Mark as paid when payment is received, or cancel if it falls through.</p>
 
       {error ? (
-        <div className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">{error}</div>
+        <Notice variant="error" className="mt-4">{error}</Notice>
       ) : null}
 
       {linkResult ? (

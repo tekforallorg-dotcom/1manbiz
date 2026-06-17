@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import { Notice } from "@/components/notice";
 import { useRouter } from "next/navigation";
 
 import { Label } from "@/components/ui/label";
@@ -37,9 +38,7 @@ export function BookingEditForm(props: {
       <input type="hidden" name="notes" value={notes} />
 
       {state.status === "error" && state.error ? (
-        <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">
-          {state.error}
-        </div>
+        <Notice variant="error">{state.error}</Notice>
       ) : null}
 
       <div>
@@ -50,7 +49,7 @@ export function BookingEditForm(props: {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="e.g. Haircut, Fitting, Repair drop-off"
-          className="mt-1.5 w-full rounded-xl border-0 bg-surface-muted px-4 py-3 text-sm text-foreground ring-1 ring-black/[0.06] transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+          className="mt-1.5 w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
           aria-invalid={Boolean(state.fieldErrors?.title)}
         />
         {state.fieldErrors?.title ? (
@@ -65,7 +64,7 @@ export function BookingEditForm(props: {
           type="datetime-local"
           value={startsAt}
           onChange={(e) => setStartsAt(e.target.value)}
-          className="mt-1.5 w-full rounded-xl border-0 bg-surface-muted px-4 py-3 text-sm text-foreground ring-1 ring-black/[0.06] transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+          className="mt-1.5 w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
           aria-invalid={Boolean(state.fieldErrors?.starts_at)}
         />
         {state.fieldErrors?.starts_at ? (
@@ -81,7 +80,7 @@ export function BookingEditForm(props: {
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
           placeholder="Anything to remember for this appointment"
-          className="mt-1.5 w-full rounded-xl border-0 bg-surface-muted px-4 py-3 text-sm text-foreground ring-1 ring-black/[0.06] transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+          className="mt-1.5 w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
         />
       </div>
 

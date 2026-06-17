@@ -113,7 +113,7 @@ export function OrderDraftPanel({ conversationId }: Props) {
   const ready = state.kind === "ready";
 
   return (
-    <div className="rounded-3xl bg-white p-4 ring-1 ring-black/[0.04] sm:p-6">
+    <div className="rounded-3xl border border-border bg-surface p-4 shadow-card sm:p-6">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-foreground">Draft order from chat</p>
@@ -160,7 +160,7 @@ export function OrderDraftPanel({ conversationId }: Props) {
             {lines.map((l) => (
               <li
                 key={l.uid}
-                className="flex items-center justify-between gap-3 rounded-xl bg-white p-2.5 ring-1 ring-black/[0.04]"
+                className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface p-2.5 shadow-sm"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm text-foreground">{l.name}</p>

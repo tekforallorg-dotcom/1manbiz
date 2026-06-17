@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Notice } from "@/components/notice";
 import { Check, X, CheckCheck } from "lucide-react";
 
 import type { BookingStatus } from "@/lib/bookings";
@@ -104,7 +105,7 @@ export function BookingActionsBar({
       </p>
 
       {error ? (
-        <div className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">{error}</div>
+        <Notice variant="error" className="mt-4">{error}</Notice>
       ) : null}
 
       <div className="mt-5 flex flex-wrap items-center gap-3">

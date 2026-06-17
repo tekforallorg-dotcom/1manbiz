@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Notice } from "@/components/notice";
 import { X } from "lucide-react";
 
 import { cancelOrderAction } from "../actions";
@@ -46,7 +47,7 @@ export function CancelPaidOrder({ orderId }: { orderId: string }) {
       <h3 className="text-base font-medium text-foreground">Cancel order</h3>
       <p className="mt-2 text-sm text-text-secondary">Cancelling returns the items to stock and reverses the sale. Refund the customer separately.</p>
       {error ? (
-        <div className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">{error}</div>
+        <Notice variant="error" className="mt-4">{error}</Notice>
       ) : null}
       <div className="mt-5 flex flex-wrap items-center gap-3">
         <button type="button" onClick={() => { setError(null); setConfirming(true); }} className="inline-flex items-center gap-1.5 rounded-full bg-surface-muted px-5 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-muted/70">

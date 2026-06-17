@@ -87,7 +87,7 @@ export function CustomerForm() {
               maxLength={1000}
               rows={3}
               placeholder="Anything worth remembering about this customer"
-              className="mt-1.5 w-full resize-none rounded-xl border-0 bg-surface-muted px-4 py-3 text-sm text-foreground ring-1 ring-black/[0.06] transition-colors placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+              className="mt-1.5 w-full resize-none rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors placeholder:text-text-muted focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
             />
           </div>
         </div>

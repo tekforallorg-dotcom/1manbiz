@@ -44,7 +44,7 @@ function StatCard(props: {
   return (
     <div
       className={
-        "rounded-3xl bg-white p-5 ring-1 ring-black/[0.04] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_-16px_rgba(0,0,0,0.12)] sm:p-6 " +
+        "rounded-3xl border border-border bg-surface p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_-16px_rgba(0,0,0,0.12)] sm:p-6 " +
         (props.className ?? "")
       }
     >
@@ -121,7 +121,7 @@ export function ConversationsLive({ businessId, initialConversations }: Props) {
   // No conversations at all.
   if (conversations.length === 0) {
     return (
-      <div className="rounded-3xl bg-white p-10 ring-1 ring-black/[0.04] sm:p-16">
+      <div className="rounded-3xl border border-border bg-surface p-10 shadow-card sm:p-16">
         <div className="mx-auto max-w-md text-center">
           <div className="mx-auto grid size-16 place-items-center rounded-2xl bg-brand-soft text-brand-primary">
             <MessageCircle size={28} strokeWidth={1.75} />
@@ -180,7 +180,7 @@ export function ConversationsLive({ businessId, initialConversations }: Props) {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by name or phone"
             aria-label="Search conversations"
-            className="w-full rounded-full bg-white py-2.5 pl-10 pr-4 text-sm text-foreground ring-1 ring-black/[0.06] placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+            className="w-full rounded-full border border-border bg-surface py-2.5 pl-10 pr-4 text-sm text-foreground outline-none transition-colors placeholder:text-text-muted focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
           />
         </div>
         <div className="-mx-1 overflow-x-auto px-1 sm:mx-0 sm:px-0">
@@ -207,7 +207,7 @@ export function ConversationsLive({ businessId, initialConversations }: Props) {
       </div>
 
       {filtered.length === 0 ? (
-        <div className="hm-rise rounded-3xl bg-white p-10 text-center ring-1 ring-black/[0.04]" style={{ animationDelay: "120ms" }}>
+        <div className="hm-rise rounded-3xl border border-border bg-surface p-10 text-center shadow-card" style={{ animationDelay: "120ms" }}>
           <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-surface-muted text-text-muted">
             <Search size={20} strokeWidth={1.75} />
           </div>
@@ -215,7 +215,7 @@ export function ConversationsLive({ businessId, initialConversations }: Props) {
           <p className="mt-1 text-sm text-text-secondary">No conversations match your search or filter.</p>
         </div>
       ) : (
-        <div className="hm-rise overflow-hidden rounded-3xl bg-white ring-1 ring-black/[0.04]" style={{ animationDelay: "120ms" }}>
+        <div className="hm-rise overflow-hidden rounded-3xl border border-border bg-surface shadow-card" style={{ animationDelay: "120ms" }}>
           <ul className="divide-y divide-border">
             {filtered.map((c) => (
               <ConversationRow key={c.id} conversation={c} />

@@ -57,7 +57,7 @@ export function ThreadMessages({ conversationId, initialMessages }: Props) {
   }, [conversationId]);
 
   return (
-    <div className="overflow-hidden rounded-3xl bg-white p-4 ring-1 ring-black/[0.04] sm:p-6">
+    <div className="overflow-hidden rounded-3xl border border-border bg-surface p-4 shadow-card sm:p-6">
       {messages.length === 0 ? (
         <p className="py-10 text-center text-sm text-text-muted">No messages yet.</p>
       ) : (

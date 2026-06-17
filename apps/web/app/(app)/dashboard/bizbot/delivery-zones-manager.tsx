@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Notice } from "@/components/notice";
 import { useRouter } from "next/navigation";
 import { Check, MapPin, Pencil, Plus, Trash2, X } from "lucide-react";
 
@@ -36,7 +37,7 @@ const SUGGESTED_AREAS = [
 ] as const;
 
 const inputClass =
-  "mt-1.5 w-full rounded-xl border-0 bg-surface-muted px-4 py-3 text-sm text-foreground ring-1 ring-black/[0.06] transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/30";
+  "mt-1.5 w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20";
 
 export function DeliveryZonesManager({ zones }: { zones: DeliveryZone[] }) {
   const router = useRouter();
@@ -111,9 +112,7 @@ export function DeliveryZonesManager({ zones }: { zones: DeliveryZone[] }) {
   return (
     <div className="space-y-3">
       {error ? (
-        <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">
-          {error}
-        </div>
+        <Notice variant="error">{error}</Notice>
       ) : null}
 
       {hasZones ? (
@@ -123,7 +122,7 @@ export function DeliveryZonesManager({ zones }: { zones: DeliveryZone[] }) {
             return (
               <li
                 key={zone.id}
-                className="rounded-2xl bg-white p-4 ring-1 ring-black/[0.04] sm:p-5"
+                className="rounded-2xl border border-border bg-surface p-4 shadow-card sm:p-5"
               >
                 {isEditing && editor ? (
                   <ZoneEditor
@@ -177,7 +176,7 @@ export function DeliveryZonesManager({ zones }: { zones: DeliveryZone[] }) {
       ) : null}
 
       {editorOpenForNew && editor ? (
-        <div className="rounded-2xl bg-white p-4 ring-1 ring-black/[0.04] sm:p-5">
+        <div className="rounded-2xl border border-border bg-surface p-4 shadow-card sm:p-5">
           <ZoneEditor
             label={editor.label}
             fee={editor.fee}
@@ -199,7 +198,7 @@ export function DeliveryZonesManager({ zones }: { zones: DeliveryZone[] }) {
           Add delivery area
         </button>
       ) : (
-        <div className="rounded-3xl bg-white p-8 text-center ring-1 ring-black/[0.04] sm:p-10">
+        <div className="rounded-3xl border border-border bg-surface p-8 text-center shadow-card sm:p-10">
           <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-brand-soft text-brand-primary">
             <MapPin size={22} strokeWidth={1.75} />
           </div>

@@ -73,7 +73,7 @@ export function BookingForm(props: { customers: Customer[]; products: Product[] 
           id="customer-select"
           value={customerId}
           onChange={(e) => setCustomerId(e.target.value)}
-          className="mt-1.5 w-full rounded-xl border-0 bg-surface-muted px-4 py-3 text-sm text-foreground ring-1 ring-black/[0.06] transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+          className="mt-1.5 w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
           aria-invalid={Boolean(state.fieldErrors?.customer_id)}
         >
           <option value="">Select a customer...</option>
@@ -93,7 +93,7 @@ export function BookingForm(props: { customers: Customer[]; products: Product[] 
             id="service-select"
             value={productId}
             onChange={(e) => onPickProduct(e.target.value)}
-            className="mt-1.5 w-full rounded-xl border-0 bg-surface-muted px-4 py-3 text-sm text-foreground ring-1 ring-black/[0.06] transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+            className="mt-1.5 w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
           >
             <option value="">No specific service</option>
             {props.products.map((p) => (
@@ -111,7 +111,7 @@ export function BookingForm(props: { customers: Customer[]; products: Product[] 
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="e.g. Haircut, Fitting, Repair drop-off"
-          className="mt-1.5 w-full rounded-xl border-0 bg-surface-muted px-4 py-3 text-sm text-foreground ring-1 ring-black/[0.06] transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+          className="mt-1.5 w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
           aria-invalid={Boolean(state.fieldErrors?.title)}
         />
         {state.fieldErrors?.title ? (
@@ -127,7 +127,7 @@ export function BookingForm(props: { customers: Customer[]; products: Product[] 
             type="datetime-local"
             value={startsAt}
             onChange={(e) => setStartsAt(e.target.value)}
-            className="mt-1.5 w-full rounded-xl border-0 bg-surface-muted px-4 py-3 text-sm text-foreground ring-1 ring-black/[0.06] transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+            className="mt-1.5 w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
             aria-invalid={Boolean(state.fieldErrors?.starts_at)}
           />
           {state.fieldErrors?.starts_at ? (
@@ -141,7 +141,7 @@ export function BookingForm(props: { customers: Customer[]; products: Product[] 
             type="datetime-local"
             value={endsAt}
             onChange={(e) => setEndsAt(e.target.value)}
-            className="mt-1.5 w-full rounded-xl border-0 bg-surface-muted px-4 py-3 text-sm text-foreground ring-1 ring-black/[0.06] transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+            className="mt-1.5 w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
             aria-invalid={Boolean(state.fieldErrors?.ends_at)}
           />
           {state.fieldErrors?.ends_at ? (
@@ -158,7 +158,7 @@ export function BookingForm(props: { customers: Customer[]; products: Product[] 
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
           placeholder="Anything to remember for this appointment"
-          className="mt-1.5 w-full rounded-xl border-0 bg-surface-muted px-4 py-3 text-sm text-foreground ring-1 ring-black/[0.06] transition-colors focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+          className="mt-1.5 w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
         />
       </div>
 

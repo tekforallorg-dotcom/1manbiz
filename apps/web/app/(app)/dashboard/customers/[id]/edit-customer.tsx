@@ -86,7 +86,7 @@ export function EditCustomer({
             rows={3}
             defaultValue={initialNotes}
             placeholder="Anything worth remembering about this customer"
-            className="mt-1.5 w-full resize-none rounded-xl border-0 bg-surface-muted px-4 py-3 text-sm text-foreground ring-1 ring-black/[0.06] transition-colors placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+            className="mt-1.5 w-full resize-none rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors placeholder:text-text-muted focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
           />
           {state.fieldErrors?.notes ? (
             <p className="mt-1.5 text-xs text-red-600">{state.fieldErrors.notes}</p>

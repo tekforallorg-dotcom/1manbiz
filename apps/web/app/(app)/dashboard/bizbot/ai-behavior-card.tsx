@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Notice } from "@/components/notice";
 
 import { updateAiBehaviorAction } from "./actions";
 
@@ -77,7 +78,7 @@ export function AiBehaviorCard({
   }
 
   return (
-    <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+    <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
       <div className="space-y-6">
         <div>
           <p className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-text-muted">BizBot mode</p>
@@ -158,12 +159,12 @@ export function AiBehaviorCard({
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
             placeholder="e.g. English"
-            className="mt-2 w-full rounded-xl border-0 bg-surface-muted px-4 py-3 text-sm text-foreground ring-1 ring-black/[0.06] placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+            className="mt-2 w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors placeholder:text-text-muted focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
           />
         </div>
 
         {error ? (
-          <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">{error}</div>
+          <Notice variant="error">{error}</Notice>
         ) : null}
 
         <div className="flex items-center justify-end gap-3">

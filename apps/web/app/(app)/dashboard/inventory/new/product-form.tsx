@@ -186,7 +186,7 @@ export function ProductForm({ businessId }: { businessId: string }) {
                   maxLength={1000}
                   rows={3}
                   placeholder="A short note customers will see"
-                  className="mt-1.5 w-full resize-none rounded-xl border-0 bg-surface-muted px-4 py-3 text-sm text-foreground ring-1 ring-black/[0.06] transition-colors placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+                  className="mt-1.5 w-full resize-none rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors placeholder:text-text-muted focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
                 />
               </div>
             </div>
@@ -223,7 +223,7 @@ export function ProductForm({ businessId }: { businessId: string }) {
               {hasVariants ? (
                 <div>
                   <Label>Total stock</Label>
-                  <div className="mt-1.5 flex h-[46px] items-center justify-between rounded-xl bg-surface-muted px-4 ring-1 ring-black/[0.06]">
+                  <div className="mt-1.5 flex h-[46px] items-center justify-between rounded-xl border border-border bg-surface px-4">
                     <span className="text-sm font-medium tabular-nums text-foreground">{variantTotal}</span>
                     <span className="text-[11px] text-text-muted">from variants</span>
                   </div>

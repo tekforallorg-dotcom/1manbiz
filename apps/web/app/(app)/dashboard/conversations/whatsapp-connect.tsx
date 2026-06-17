@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { Notice } from "@/components/notice";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,12 +19,10 @@ export function WhatsAppConnect(props: {
   return (
     <div className="space-y-6">
       {props.existingStatus === "failed" && props.existingError ? (
-        <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">
-          Previous connection failed: {props.existingError}
-        </div>
+        <Notice variant="error">Previous connection failed: {props.existingError}</Notice>
       ) : null}
 
-      <section className="rounded-3xl bg-white p-6 ring-1 ring-black/[0.04] sm:p-8">
+      <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
         <h2 className="text-base font-medium text-foreground">Connect WhatsApp Business</h2>
         <p className="mt-2 text-sm text-text-secondary">
           Paste your phone-number ID and access token from Meta App Dashboard &middot; WhatsApp &middot; API Setup.
@@ -75,7 +74,7 @@ export function WhatsAppConnect(props: {
               id="token_type"
               name="token_type"
               defaultValue="temporary"
-              className="mt-1.5 w-full rounded-xl border-0 bg-surface-muted px-4 py-3 text-sm text-foreground ring-1 ring-black/[0.06] focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+              className="mt-1.5 w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none transition-colors focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
             >
               <option value="temporary">Temporary (24h test token)</option>
               <option value="permanent">Permanent (system user token)</option>
@@ -83,9 +82,7 @@ export function WhatsAppConnect(props: {
           </div>
 
           {state.status === "error" && state.error ? (
-            <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">
-              {state.error}
-            </div>
+            <Notice variant="error">{state.error}</Notice>
           ) : null}
 
           <div className="flex items-center justify-end gap-3 pt-2">
