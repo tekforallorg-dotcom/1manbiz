@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -14,6 +13,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useNotifier } from "../../../components/notifier";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChevronLeft, ChevronRight, Send, X, Minus, Plus, Phone, Share2 } from "lucide-react-native";
@@ -71,6 +71,7 @@ function compactNaira(kobo: number): string {
 
 export default function ConversationThreadScreen() {
   const router = useRouter();
+  const { notify } = useNotifier();
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const [loading, setLoading] = useState(true);
@@ -305,7 +306,7 @@ export default function ConversationThreadScreen() {
       // Roll back optimistic bubble and restore draft.
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setDraft(text);
-      Alert.alert("Send failed", result.error);
+      notify({ type: "error", title: "Send failed", message: result.error });
       setSending(false);
       return;
     }
@@ -414,7 +415,7 @@ export default function ConversationThreadScreen() {
     const result = await markOrderPaid(orderId);
     setMarkingId(null);
     if (!result.ok) {
-      Alert.alert("Could not mark as paid", result.error ?? "Please try again.");
+      notify({ type: "error", title: "Could not mark as paid", message: result.error ?? "Please try again." });
       return;
     }
     // Refresh the sheet list and the header pills to reflect one fewer open order.
@@ -429,7 +430,7 @@ export default function ConversationThreadScreen() {
     const init = await initPaymentLink(orderId);
     setSendingId(null);
     if (!init.ok) {
-      Alert.alert("Could not create link", init.error);
+      notify({ type: "error", title: "Could not create link", message: init.error });
       return;
     }
     const who = header?.customer_name ? "Hi " + header.customer_name + ", " : "Hi, ";
@@ -448,7 +449,7 @@ export default function ConversationThreadScreen() {
     const result = await updateCustomerNotes(cid, noteDraft.trim());
     setSavingNote(false);
     if (!result.ok) {
-      Alert.alert("Could not save note", result.error ?? "Please try again.");
+      notify({ type: "error", title: "Could not save note", message: result.error ?? "Please try again." });
       return;
     }
     const next = noteDraft.trim().length > 0 ? noteDraft.trim() : null;

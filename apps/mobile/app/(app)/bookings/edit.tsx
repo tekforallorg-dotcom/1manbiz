@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
-import { View, Text, ScrollView, Pressable, ActivityIndicator, Alert, TextInput } from "react-native";
+import { View, Text, ScrollView, Pressable, ActivityIndicator, TextInput } from "react-native";
+import { useNotifier } from "../../../components/notifier";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { fetchBookingDetail, updateBooking } from "../../../lib/bookings";
@@ -33,6 +34,7 @@ function toIso(dateStr: string, timeStr: string): string | null {
 
 export default function EditBookingScreen() {
   const router = useRouter();
+  const { notify } = useNotifier();
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const [loading, setLoading] = useState(true);
@@ -75,14 +77,14 @@ export default function EditBookingScreen() {
     if (!id) return;
     const startsAtIso = toIso(dateStr, timeStr);
     if (!startsAtIso) {
-      Alert.alert("Check the date and time", "Use the format YYYY-MM-DD for the date and HH:MM (24h) for the time.");
+      notify({ type: "error", title: "Check the date and time", message: "Use the format YYYY-MM-DD for the date and HH:MM (24h) for the time." });
       return;
     }
     setSaving(true);
     const result = await updateBooking(id, { title, startsAtIso, notes });
     setSaving(false);
     if (!result.ok) {
-      Alert.alert("Could not save changes", result.error);
+      notify({ type: "error", title: "Could not save changes", message: result.error });
       return;
     }
     router.replace({ pathname: "/bookings/[id]", params: { id } });

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { View, Text, ScrollView, Pressable, ActivityIndicator, Alert, TextInput } from "react-native";
+import { View, Text, ScrollView, Pressable, ActivityIndicator, TextInput } from "react-native";
+import { useNotifier } from "../../../components/notifier";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { UserPlus, ChevronDown } from "lucide-react-native";
@@ -42,6 +43,7 @@ function toIso(dateStr: string, timeStr: string): string | null {
 
 export default function NewBookingScreen() {
   const router = useRouter();
+  const { notify } = useNotifier();
   const { session } = useSession();
   const userId = session?.user?.id;
 
@@ -85,7 +87,7 @@ export default function NewBookingScreen() {
     if (!customer || !businessId) return;
     const startsAtIso = toIso(dateStr, timeStr);
     if (!startsAtIso) {
-      Alert.alert("Check the date and time", "Use the format YYYY-MM-DD for the date and HH:MM (24h) for the time.");
+      notify({ type: "error", title: "Check the date and time", message: "Use the format YYYY-MM-DD for the date and HH:MM (24h) for the time." });
       return;
     }
     setSaving(true);
@@ -100,14 +102,11 @@ export default function NewBookingScreen() {
     setSaving(false);
 
     if (result.error || !result.id) {
-      Alert.alert("Could not save booking", result.error ?? "Please try again.");
+      notify({ type: "error", title: "Could not save booking", message: result.error ?? "Please try again." });
       return;
     }
     if (result.conflictWarning) {
-      Alert.alert("Booking created", result.conflictWarning, [
-        { text: "OK", onPress: () => router.replace(`/bookings/${result.id}`) },
-      ]);
-      return;
+      notify({ type: "info", title: "Booking created", message: result.conflictWarning });
     }
     router.replace(`/bookings/${result.id}`);
   };

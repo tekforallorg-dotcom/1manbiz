@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
-import { View, Text, ScrollView, ActivityIndicator, Pressable, Linking, Alert } from "react-native";
+import { View, Text, ScrollView, ActivityIndicator, Pressable, Linking } from "react-native";
+import { useNotifier } from "../../../components/notifier";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, router } from "expo-router";
 import { MessageCircle, Phone, Pencil, ChevronRight } from "lucide-react-native";
@@ -34,6 +35,7 @@ function digitsOnly(phone: string): string {
 export default function CustomerDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
+  const { notify } = useNotifier();
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
   const [receipts, setReceipts] = useState<CustomerReceipt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +77,7 @@ export default function CustomerDetailScreen() {
     if (num) {
       Linking.openURL(`https://wa.me/${num}`).catch((err) => console.error("[customer-detail] wa error:", err));
     } else {
-      Alert.alert("No chat yet", "There is no WhatsApp conversation with this customer yet.");
+      notify({ type: "info", title: "No chat yet", message: "There is no WhatsApp conversation with this customer yet." });
     }
   }, [profile]);
 

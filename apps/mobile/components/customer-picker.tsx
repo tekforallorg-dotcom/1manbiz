@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from "react";
 import {
-  View, Text, Modal, Pressable, TextInput, ScrollView, ActivityIndicator, Alert,
+  View, Text, Modal, Pressable, TextInput, ScrollView, ActivityIndicator,
 } from "react-native";
+import { useNotifier } from "./notifier";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { UserPlus } from "lucide-react-native";
 import { listCustomers, createCustomer, type Customer } from "../lib/customers";
@@ -17,6 +18,7 @@ interface Props {
 
 export function CustomerPicker({ visible, businessId, onSelect, onClose }: Props) {
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const { notify } = useNotifier();
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
@@ -50,7 +52,7 @@ export function CustomerPicker({ visible, businessId, onSelect, onClose }: Props
     const result = await createCustomer(businessId, newName, newPhone);
     setSaving(false);
     if (result.error || !result.customer) {
-      Alert.alert("Could not add customer", result.error ?? "Please try again.");
+      notify({ type: "error", title: "Could not add customer", message: result.error ?? "Please try again." });
       return;
     }
     onSelect(result.customer);

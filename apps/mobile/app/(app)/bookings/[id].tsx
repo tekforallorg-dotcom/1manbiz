@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
-import { View, Text, ScrollView, ActivityIndicator, Pressable, Alert } from "react-native";
+import { View, Text, ScrollView, ActivityIndicator, Pressable } from "react-native";
+import { useNotifier } from "../../../components/notifier";
 import { ConfirmSheet } from "../../../components/confirm-sheet";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -42,6 +43,7 @@ function formatFull(startsAt: string, endsAt: string | null): string {
 export default function BookingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { notify } = useNotifier();
   const [booking, setBooking] = useState<BookingDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -77,7 +79,7 @@ export default function BookingDetailScreen() {
       setBooking(original);
       setWorking(false);
       setPendingTransition(null);
-      Alert.alert("Could not update booking", result.error);
+      notify({ type: "error", title: "Could not update booking", message: result.error });
       return;
     }
     const refreshed = await fetchBookingDetail(booking.id);
