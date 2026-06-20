@@ -15,7 +15,9 @@ import {
 import {
   getPaymentConnectors,
   getInflowByProvider,
+  getOnlinePaymentsState,
   paymentHealth,
+  ONLINE_ON_HEALTH,
   PAYMENT_PROVIDERS,
   type PaymentConnectorRow,
   type ProviderInflow,
@@ -26,6 +28,7 @@ import { ConnectorCard } from "../../../components/connector-card";
 import { WhatsappManageSheet } from "../../../components/whatsapp-manage-sheet";
 import { PaymentConnectSheet } from "../../../components/payment-connect-sheet";
 import { ProviderLogo } from "../../../components/provider-logo";
+import { OnlinePaymentsSheet } from "../../../components/online-payments-sheet";
 
 function SectionHeading({ children }: { children: string }) {
   return (
@@ -57,6 +60,7 @@ export default function ConnectorsScreen() {
   const [connectors, setConnectors] = useState<ChannelConnector[] | null>(null);
   const [payments, setPayments] = useState<PaymentConnectorRow[] | null>(null);
   const [inflow, setInflow] = useState<Record<string, ProviderInflow> | null>(null);
+  const [onlineOn, setOnlineOn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
@@ -67,6 +71,7 @@ export default function ConnectorsScreen() {
       setConnectors([]);
       setPayments([]);
       setInflow({});
+      setOnlineOn(false);
       return;
     }
     const bid = await getActiveBusinessId(userId);
@@ -75,16 +80,19 @@ export default function ConnectorsScreen() {
       setConnectors([]);
       setPayments([]);
       setInflow({});
+      setOnlineOn(false);
       return;
     }
-    const [chans, pays, inf] = await Promise.all([
+    const [chans, pays, inf, online] = await Promise.all([
       getChannelConnectors(bid),
       getPaymentConnectors(bid),
       getInflowByProvider(bid),
+      getOnlinePaymentsState(bid),
     ]);
     setConnectors(chans);
     setPayments(pays);
     setInflow(inf);
+    setOnlineOn(online);
   }, [userId]);
 
   useFocusEffect(
@@ -160,15 +168,27 @@ export default function ConnectorsScreen() {
                 inflowRow && inflowRow.totalKobo > 0
                   ? `${formatNaira(inflowRow.totalKobo)} collected`
                   : null;
+              const isOnline = p.kind === "online";
+              const health = isOnline
+                ? onlineOn
+                  ? ONLINE_ON_HEALTH
+                  : null
+                : paymentHealth(row);
+              const detail = isOnline
+                ? onlineOn
+                  ? "Card and transfer via link"
+                  : null
+                : row?.displayLabel ?? null;
+              const metaLine = collected ?? (isOnline ? null : row ? "Manual" : null);
               return (
                 <ConnectorCard
                   key={p.provider}
                   name={p.name}
                   description={p.blurb}
                   logo={<ProviderLogo domain={p.domain} name={p.name} />}
-                  health={paymentHealth(row)}
-                  detail={row?.displayLabel ?? null}
-                  metaLine={collected ?? (row ? "Manual" : null)}
+                  health={health}
+                  detail={detail}
+                  metaLine={metaLine}
                   onPress={() => setSelectedProvider(p)}
                 />
               );
@@ -193,16 +213,28 @@ export default function ConnectorsScreen() {
       ) : null}
 
       {selectedProvider && businessId ? (
-        <PaymentConnectSheet
-          businessId={businessId}
-          provider={selectedProvider}
-          existing={selectedRow}
-          visible={!!selectedProvider}
-          onClose={() => setSelectedProvider(null)}
-          onChanged={() => {
-            void load();
-          }}
-        />
+        selectedProvider.kind === "online" ? (
+          <OnlinePaymentsSheet
+            businessId={businessId}
+            on={onlineOn}
+            visible={!!selectedProvider}
+            onClose={() => setSelectedProvider(null)}
+            onChanged={() => {
+              void load();
+            }}
+          />
+        ) : (
+          <PaymentConnectSheet
+            businessId={businessId}
+            provider={selectedProvider}
+            existing={selectedRow}
+            visible={!!selectedProvider}
+            onClose={() => setSelectedProvider(null)}
+            onChanged={() => {
+              void load();
+            }}
+          />
+        )
       ) : null}
     </SafeAreaView>
   );

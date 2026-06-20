@@ -31,18 +31,19 @@ export interface ProviderMeta {
   name: string;
   blurb: string;
   domain: string | null; // for the runtime brand logo lookup; null = generic rail
+  kind: "online" | "manual"; // online = link + webhook auto-mark; manual = record-only
 }
 
 // Catalog rendered on the Connectors screen. Every rail shows whether or not a
 // row exists yet. All connect via manual mode in this slice; Paystack-API
 // auto-sync is a later slice.
 export const PAYMENT_PROVIDERS: ProviderMeta[] = [
-  { provider: "paystack", name: "Paystack", blurb: "Card and transfer payments", domain: "paystack.com" },
-  { provider: "opay", name: "OPay", blurb: "Record OPay payments", domain: "opayweb.com" },
-  { provider: "moniepoint", name: "Moniepoint", blurb: "Moniepoint POS and transfers", domain: "moniepoint.com" },
-  { provider: "kuda", name: "Kuda", blurb: "Kuda business transfers", domain: "kuda.com" },
-  { provider: "flutterwave", name: "Flutterwave", blurb: "Flutterwave settlements", domain: "flutterwave.com" },
-  { provider: "bank", name: "Bank transfer", blurb: "Direct bank transfers", domain: null },
+  { provider: "paystack", name: "Paystack", blurb: "Online card and transfer", domain: "paystack.com", kind: "online" },
+  { provider: "opay", name: "OPay", blurb: "Record OPay payments", domain: "opayweb.com", kind: "manual" },
+  { provider: "moniepoint", name: "Moniepoint", blurb: "Moniepoint POS and transfers", domain: "moniepoint.com", kind: "manual" },
+  { provider: "kuda", name: "Kuda", blurb: "Kuda business transfers", domain: "kuda.com", kind: "manual" },
+  { provider: "flutterwave", name: "Flutterwave", blurb: "Flutterwave settlements", domain: "flutterwave.com", kind: "manual" },
+  { provider: "bank", name: "Bank transfer", blurb: "Direct bank transfers", domain: null, kind: "manual" },
 ];
 
 export async function getPaymentConnectors(businessId: string): Promise<PaymentConnectorRow[]> {
@@ -158,4 +159,69 @@ export async function getInflowByProvider(
     out[p] = cur;
   }
   return out;
+}
+
+// Badge shown on the online rail when auto-collect is on.
+export const ONLINE_ON_HEALTH: ConnectorHealth = {
+  state: "connected",
+  label: "Auto-collect on",
+  tone: "success",
+};
+
+// The online rail is gated by businesses.ai_sends_payment_link -- the same flag
+// the deployed auto-reply reads at runtime. Reading/writing it here means the
+// connector controls the live "BizBot sends a payment link and auto-marks on
+// payment" loop with no web deploy. The payment_connectors row records WHICH
+// provider is the online rail (paystack today).
+export async function getOnlinePaymentsState(businessId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("businesses")
+    .select("ai_sends_payment_link")
+    .eq("id", businessId)
+    .maybeSingle();
+  if (error) {
+    console.error("[payment-connectors] online state error:", error);
+    return false;
+  }
+  return data?.ai_sends_payment_link === true;
+}
+
+export async function setOnlinePayments(
+  businessId: string,
+  on: boolean,
+): Promise<{ error?: string }> {
+  // The flag is the source of truth the bot reads; set it first.
+  const { error: bizErr } = await supabase
+    .from("businesses")
+    .update({ ai_sends_payment_link: on })
+    .eq("id", businessId);
+  if (bizErr) {
+    console.error("[payment-connectors] set online error:", bizErr);
+    return { error: bizErr.message };
+  }
+  // Record which provider is the online rail. Non-critical: log but do not fail
+  // the toggle, since the flag above already controls bot behavior.
+  if (on) {
+    const { error } = await supabase.from("payment_connectors").upsert(
+      {
+        business_id: businessId,
+        provider: "paystack",
+        mode: "api",
+        status: "connected",
+        display_label: "Card and transfer",
+        connected_at: new Date().toISOString(),
+        last_error: null,
+      },
+      { onConflict: "business_id,provider" },
+    );
+    if (error) console.error("[payment-connectors] online row upsert:", error);
+  } else {
+    const { error } = await supabase
+      .from("payment_connectors")
+      .update({ status: "not_connected" })
+      .eq("business_id", businessId)
+      .eq("provider", "paystack");
+    if (error) console.error("[payment-connectors] online row update:", error);
+  }
+  return {};
 }
