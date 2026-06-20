@@ -13,6 +13,7 @@ import {
   type ChannelConnector,
 } from "../../../lib/connectors";
 import { ConnectorCard } from "../../../components/connector-card";
+import { WhatsappManageSheet } from "../../../components/whatsapp-manage-sheet";
 
 function SectionHeading({ children }: { children: string }) {
   return (
@@ -29,6 +30,7 @@ export default function ConnectorsScreen() {
   const [connectors, setConnectors] = useState<ChannelConnector[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!userId) {
@@ -103,6 +105,7 @@ export default function ConnectorsScreen() {
             detail={whatsapp?.displayNumber ?? null}
             metaLine={verified ? `Verified ${verified}` : null}
             errorText={whatsapp?.lastError ?? null}
+            onPress={whatsapp ? () => setManageOpen(true) : undefined}
           />
         )}
 
@@ -118,6 +121,17 @@ export default function ConnectorsScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {whatsapp ? (
+        <WhatsappManageSheet
+          connector={whatsapp}
+          visible={manageOpen}
+          onClose={() => setManageOpen(false)}
+          onChanged={() => {
+            void load();
+          }}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }

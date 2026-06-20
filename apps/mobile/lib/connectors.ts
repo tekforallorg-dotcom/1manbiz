@@ -96,3 +96,28 @@ export function relativeShort(iso: string | null): string | null {
   if (months < 12) return `${months}mo ago`;
   return `${Math.floor(months / 12)}y ago`;
 }
+
+// Owner-gated soft connect/disconnect. RLS (channel_accounts_update_by_owner ->
+// private.is_business_owner) ensures only the business owner can flip status, and
+// we only ever write status + updated_at (never the token). auto-reply.ts gates
+// on status === "connected", so disconnecting genuinely pauses BizBot; the token
+// is retained so a soft reconnect just resumes. A genuinely errored/expired
+// connection needs the real Meta handshake on web, not this flip.
+export async function setChannelConnection(
+  channelAccountId: string,
+  connected: boolean,
+): Promise<{ status?: string; error?: string }> {
+  const status = connected ? "connected" : "disconnected";
+  const { data, error } = await supabase
+    .from("channel_accounts")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", channelAccountId)
+    .select("status")
+    .single();
+
+  if (error) {
+    console.error("[connectors] set connection error:", error);
+    return { error: error.message };
+  }
+  return { status: (data?.status as string | undefined) ?? status };
+}
