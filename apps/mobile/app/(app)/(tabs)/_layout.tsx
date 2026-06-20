@@ -30,6 +30,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="money" />
         <Tabs.Screen name="insights" />
         <Tabs.Screen name="bizbot" />
+        <Tabs.Screen name="connectors" />
         <Tabs.Screen name="settings" />
       </Tabs>
 
