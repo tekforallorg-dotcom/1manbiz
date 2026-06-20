@@ -8,19 +8,18 @@ import { ProviderLogo } from "./provider-logo";
 import { supabase } from "../lib/supabase";
 import { formatNaira } from "../lib/format";
 import { getActiveBusinessId } from "../lib/business";
-import { getPaymentConnectors, PAYMENT_PROVIDERS } from "../lib/payment-connectors";
+import {
+  getPaymentConnectors,
+  getOnlinePaymentsState,
+  paymentHealth,
+  PAYMENT_PROVIDERS,
+} from "../lib/payment-connectors";
 
 interface RailOption {
   provider: string;
   name: string;
   domain: string | null;
 }
-
-// Always-available rails on top of the connectable providers.
-const EXTRA: RailOption[] = [
-  { provider: "cash", name: "Cash", domain: null },
-  { provider: "other", name: "Other", domain: null },
-];
 
 interface Props {
   visible: boolean;
@@ -53,13 +52,23 @@ export function MarkPaidSheet({
         if (!user) return;
         const bid = await getActiveBusinessId(user.id);
         if (!bid || !alive) return;
-        const rows = await getPaymentConnectors(bid);
+        const [rows, onlineOn] = await Promise.all([
+          getPaymentConnectors(bid),
+          getOnlinePaymentsState(bid),
+        ]);
         if (!alive) return;
-        setConnected(
-          new Set(rows.filter((r) => r.status === "connected").map((r) => r.provider)),
-        );
+        // "Active" mirrors the Connectors screen exactly: a manual connector
+        // counts when paymentHealth says connected (status manual/connected),
+        // and Paystack counts when online payments are on -- the same flag the
+        // Paystack card reads, since its connector row can lag behind the flag.
+        const set = new Set<string>();
+        for (const r of rows) {
+          if (paymentHealth(r)?.state === "connected") set.add(r.provider);
+        }
+        if (onlineOn) set.add("paystack");
+        setConnected(set);
       } catch {
-        // best-effort: this only drives ordering and the Connected badge
+        // best-effort: drives which connected rails appear
       }
     })();
     return () => {
@@ -67,19 +76,17 @@ export function MarkPaidSheet({
     };
   }, [visible]);
 
-  // Manual rails from the catalog (the online rail auto-marks via webhook, so it
-  // is not a manual option) plus cash / other.
-  const base: RailOption[] = [
-    ...PAYMENT_PROVIDERS.filter((p) => p.kind === "manual").map((p) => ({
-      provider: p.provider,
-      name: p.name,
-      domain: p.domain,
-    })),
-    ...EXTRA,
+  // Every connector the vendor has active -- including the online rail (Paystack)
+  // when auto-collect is on -- then the universal manual methods every vendor can
+  // receive. The bank connector folds into "Bank transfer" to avoid a duplicate.
+  const connectedRails: RailOption[] = PAYMENT_PROVIDERS.filter(
+    (p) => p.provider !== "bank" && connected.has(p.provider),
+  ).map((p) => ({ provider: p.provider, name: p.name, domain: p.domain }));
+  const options: RailOption[] = [
+    ...connectedRails,
+    { provider: "bank", name: "Bank transfer", domain: null },
+    { provider: "cash", name: "Cash", domain: null },
   ];
-  const options = [...base].sort(
-    (a, b) => (connected.has(a.provider) ? 0 : 1) - (connected.has(b.provider) ? 0 : 1),
-  );
 
   const renderIcon = (o: RailOption): ReactNode => {
     if (o.domain) return <ProviderLogo domain={o.domain} name={o.name} />;
@@ -127,11 +134,6 @@ export function MarkPaidSheet({
               >
                 {renderIcon(o)}
                 <Text className="text-text text-base font-medium flex-1 ml-3">{o.name}</Text>
-                {connected.has(o.provider) ? (
-                  <View className="bg-green-50 rounded-full px-2.5 py-0.5">
-                    <Text className="text-green-700 text-xs font-medium">Connected</Text>
-                  </View>
-                ) : null}
               </Pressable>
             ))}
           </ScrollView>
