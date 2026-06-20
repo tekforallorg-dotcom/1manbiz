@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
   }
 
-  let payload: { orderId?: string };
+  let payload: { orderId?: string; paymentProvider?: string };
   try {
     payload = await request.json();
   } catch {
@@ -54,6 +54,23 @@ export async function POST(request: NextRequest) {
   if (!orderId) {
     return NextResponse.json({ ok: false, error: "orderId required" }, { status: 400 });
   }
+  // Optional manual-rail tag. Online (Paystack) orders are tagged by the webhook;
+  // this is for bank / OPay / cash etc. the vendor confirms by hand. Unknown or
+  // missing values are ignored, so older clients keep working unchanged.
+  const ALLOWED_PROVIDERS = new Set([
+    "paystack",
+    "opay",
+    "moniepoint",
+    "kuda",
+    "flutterwave",
+    "bank",
+    "cash",
+    "other",
+  ]);
+  const paymentProvider =
+    typeof payload.paymentProvider === "string" && ALLOWED_PROVIDERS.has(payload.paymentProvider)
+      ? payload.paymentProvider
+      : null;
 
   const admin = createAdminClient();
 
@@ -84,14 +101,26 @@ export async function POST(request: NextRequest) {
   }
 
   if (order.status !== "paid") {
+    const patch: { status: string; payment_provider?: string } = { status: "paid" };
+    if (paymentProvider) patch.payment_provider = paymentProvider;
     const { error: updateErr } = await admin
       .from("orders")
-      .update({ status: "paid" })
+      .update(patch)
       .eq("id", orderId)
       .eq("business_id", business.id);
     if (updateErr) {
       console.error("[orders/mark-paid] paid update failed", updateErr);
       return NextResponse.json({ ok: false, error: updateErr.message }, { status: 500 });
+    }
+  } else if (paymentProvider) {
+    // Already paid: still allow recording or correcting the rail tag.
+    const { error: tagErr } = await admin
+      .from("orders")
+      .update({ payment_provider: paymentProvider })
+      .eq("id", orderId)
+      .eq("business_id", business.id);
+    if (tagErr) {
+      console.error("[orders/mark-paid] provider tag update failed", tagErr);
     }
   }
 
@@ -108,5 +137,5 @@ export async function POST(request: NextRequest) {
     console.error("[orders/mark-paid] receipt auto-send threw", e);
   }
 
-  return NextResponse.json({ ok: true, receiptSent });
+  return NextResponse.json({ ok: true, receiptSent, paymentProvider });
 }
