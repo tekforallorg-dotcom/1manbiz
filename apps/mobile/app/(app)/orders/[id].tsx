@@ -16,6 +16,7 @@ import { formatNaira, nairaParts, formatDateTime } from "../../../lib/format";
 import { API_BASE_URL } from "../../../lib/config";
 import { ScreenHeader } from "../../../components/screen-header";
 import { ConfirmSheet } from "../../../components/confirm-sheet";
+import { MarkPaidSheet } from "../../../components/mark-paid-sheet";
 import { LineItemRow } from "../../../components/line-item-row";
 import { colors as designColors } from "@1manbiz/design";
 import { ORDER_SOURCE_LABEL } from "@1manbiz/shared";
@@ -61,13 +62,13 @@ export default function OrderDetailScreen() {
     }, [load]),
   );
 
-  const doMarkPaid = async () => {
+  const doMarkPaid = async (provider: string | null) => {
     if (!order) return;
     setMarking(true);
     const original = order;
     setOrder({ ...order, status: "paid", paid_at: new Date().toISOString() });
 
-    const result = await markOrderPaid(order.id);
+    const result = await markOrderPaid(order.id, provider);
     if (!result.ok) {
       setOrder(original);
       setMarking(false);
@@ -309,18 +310,16 @@ export default function OrderDetailScreen() {
         ) : null}
       </View>
 
-      <ConfirmSheet
+      <MarkPaidSheet
         visible={confirmingPaid}
-        title="Mark as paid?"
-        body={
-          order
-            ? "Confirm that " + (order.customer_name ?? "the customer") + " has paid " + formatNaira(totalKobo) + "."
-            : undefined
-        }
-        confirmLabel="Mark as paid"
+        customerName={order?.customer_name ?? null}
+        amountKobo={totalKobo}
         pending={marking}
-        onConfirm={doMarkPaid}
-        onCancel={() => setConfirmingPaid(false)}
+        onPick={(provider) => {
+          setConfirmingPaid(false);
+          void doMarkPaid(provider);
+        }}
+        onClose={() => setConfirmingPaid(false)}
       />
 
       <ConfirmSheet

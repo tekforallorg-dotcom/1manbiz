@@ -79,7 +79,10 @@ export async function fetchOrderDetail(orderId: string): Promise<OrderDetail | n
 
 // Mark order as paid. The DB trigger generates receipt_code on this transition.
 // Caller should refetch via fetchOrderDetail after success to get the new code.
-export async function markOrderPaid(orderId: string): Promise<{ ok: boolean; error?: string }> {
+export async function markOrderPaid(
+  orderId: string,
+  paymentProvider?: string | null,
+): Promise<{ ok: boolean; error?: string }> {
   // Routed through the server so the paid transition also auto-sends the
   // receipt (the mobile twin of the web Mark paid). A direct DB update from the
   // client would flip status but never run the server-side receipt send.
@@ -95,7 +98,9 @@ export async function markOrderPaid(orderId: string): Promise<{ ok: boolean; err
         "Content-Type": "application/json",
         Authorization: "Bearer " + token,
       },
-      body: JSON.stringify({ orderId }),
+      body: JSON.stringify(
+        paymentProvider ? { orderId, paymentProvider } : { orderId },
+      ),
     });
   } catch {
     return { ok: false, error: "Network error. Check your connection and try again." };
