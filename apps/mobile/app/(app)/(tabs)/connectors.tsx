@@ -12,8 +12,17 @@ import {
   relativeShort,
   type ChannelConnector,
 } from "../../../lib/connectors";
+import {
+  getPaymentConnectors,
+  paymentHealth,
+  PAYMENT_PROVIDERS,
+  type PaymentConnectorRow,
+  type ProviderMeta,
+} from "../../../lib/payment-connectors";
 import { ConnectorCard } from "../../../components/connector-card";
 import { WhatsappManageSheet } from "../../../components/whatsapp-manage-sheet";
+import { PaymentConnectSheet } from "../../../components/payment-connect-sheet";
+import { ProviderLogo } from "../../../components/provider-logo";
 
 function SectionHeading({ children }: { children: string }) {
   return (
@@ -23,26 +32,51 @@ function SectionHeading({ children }: { children: string }) {
   );
 }
 
+function CardSkeleton() {
+  return (
+    <View className="bg-white border border-gray-200 rounded-2xl p-4 mb-3">
+      <View className="flex-row items-center">
+        <View className="w-11 h-11 rounded-xl bg-gray-100 mr-3" />
+        <View className="flex-1">
+          <View className="h-4 w-28 bg-gray-100 rounded" />
+          <View className="h-3 w-44 bg-gray-100 rounded mt-2" />
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export default function ConnectorsScreen() {
   const { session } = useSession();
   const userId = session?.user?.id;
 
+  const [businessId, setBusinessId] = useState<string | null>(null);
   const [connectors, setConnectors] = useState<ChannelConnector[] | null>(null);
+  const [payments, setPayments] = useState<PaymentConnectorRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState<ProviderMeta | null>(null);
 
   const load = useCallback(async () => {
     if (!userId) {
       setConnectors([]);
+      setPayments([]);
       return;
     }
-    const businessId = await getActiveBusinessId(userId);
-    if (!businessId) {
+    const bid = await getActiveBusinessId(userId);
+    setBusinessId(bid);
+    if (!bid) {
       setConnectors([]);
+      setPayments([]);
       return;
     }
-    setConnectors(await getChannelConnectors(businessId));
+    const [chans, pays] = await Promise.all([
+      getChannelConnectors(bid),
+      getPaymentConnectors(bid),
+    ]);
+    setConnectors(chans);
+    setPayments(pays);
   }, [userId]);
 
   useFocusEffect(
@@ -66,9 +100,12 @@ export default function ConnectorsScreen() {
   }, [load]);
 
   const whatsapp = (connectors ?? []).find((c) => c.channel === "whatsapp") ?? null;
-  const health = whatsapp ? connectorHealth(whatsapp) : null;
+  const whatsappHealth = whatsapp ? connectorHealth(whatsapp) : null;
   const verified = whatsapp ? relativeShort(whatsapp.lastVerifiedAt) : null;
-  const initialLoading = loading && connectors === null;
+  const selectedRow =
+    selectedProvider
+      ? (payments ?? []).find((r) => r.provider === selectedProvider.provider) ?? null
+      : null;
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["top"]}>
@@ -85,23 +122,14 @@ export default function ConnectorsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <SectionHeading>Channels</SectionHeading>
-
-        {initialLoading ? (
-          <View className="bg-white border border-gray-200 rounded-2xl p-4 mb-3">
-            <View className="flex-row items-center">
-              <View className="w-11 h-11 rounded-xl bg-gray-100 mr-3" />
-              <View className="flex-1">
-                <View className="h-4 w-28 bg-gray-100 rounded" />
-                <View className="h-3 w-44 bg-gray-100 rounded mt-2" />
-              </View>
-            </View>
-          </View>
+        {loading && connectors === null ? (
+          <CardSkeleton />
         ) : (
           <ConnectorCard
             name="WhatsApp"
             description="Receive customer chats and let BizBot reply"
             icon={MessageCircle}
-            health={health}
+            health={whatsappHealth}
             detail={whatsapp?.displayNumber ?? null}
             metaLine={verified ? `Verified ${verified}` : null}
             errorText={whatsapp?.lastError ?? null}
@@ -111,14 +139,32 @@ export default function ConnectorsScreen() {
 
         <View className="mt-4">
           <SectionHeading>Money</SectionHeading>
-          <View className="bg-white border border-gray-200 rounded-2xl p-4">
-            <Text className="text-text text-base font-bold">Payment rails are coming</Text>
-            <Text className="text-textMuted text-sm mt-1">
-              Paystack, OPay, Moniepoint, Kuda and Flutterwave land here next. They
-              feed your Money ledger and let BizBot mark customer payments as paid in
-              auto mode.
-            </Text>
-          </View>
+          {loading && payments === null ? (
+            <>
+              <CardSkeleton />
+              <CardSkeleton />
+            </>
+          ) : (
+            PAYMENT_PROVIDERS.map((p) => {
+              const row = (payments ?? []).find((r) => r.provider === p.provider) ?? null;
+              return (
+                <ConnectorCard
+                  key={p.provider}
+                  name={p.name}
+                  description={p.blurb}
+                  logo={<ProviderLogo domain={p.domain} name={p.name} />}
+                  health={paymentHealth(row)}
+                  detail={row?.displayLabel ?? null}
+                  metaLine={row ? "Manual" : null}
+                  onPress={() => setSelectedProvider(p)}
+                />
+              );
+            })
+          )}
+          <Text className="text-textMuted text-xs mt-1 leading-5">
+            Connected rails feed your Money ledger and let BizBot mark customer payments
+            as paid in auto mode.
+          </Text>
         </View>
       </ScrollView>
 
@@ -127,6 +173,19 @@ export default function ConnectorsScreen() {
           connector={whatsapp}
           visible={manageOpen}
           onClose={() => setManageOpen(false)}
+          onChanged={() => {
+            void load();
+          }}
+        />
+      ) : null}
+
+      {selectedProvider && businessId ? (
+        <PaymentConnectSheet
+          businessId={businessId}
+          provider={selectedProvider}
+          existing={selectedRow}
+          visible={!!selectedProvider}
+          onClose={() => setSelectedProvider(null)}
           onChanged={() => {
             void load();
           }}
