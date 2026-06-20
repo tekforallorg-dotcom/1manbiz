@@ -125,3 +125,37 @@ export function paymentHealth(row: PaymentConnectorRow | null): ConnectorHealth 
   }
   return null;
 }
+
+export interface ProviderInflow {
+  totalKobo: number;
+  count: number;
+  lastAt: string | null;
+}
+
+// Inflow per rail from settled payments (status "success" only; "pending" are
+// uncompleted links). Reduced client-side; volume is low today. When this grows
+// it should move to a SQL aggregate (view/RPC).
+export async function getInflowByProvider(
+  businessId: string,
+): Promise<Record<string, ProviderInflow>> {
+  const { data, error } = await supabase
+    .from("payments")
+    .select("provider, amount_kobo, created_at")
+    .eq("business_id", businessId)
+    .eq("status", "success");
+  if (error) {
+    console.error("[payment-connectors] inflow error:", error);
+    return {};
+  }
+  const out: Record<string, ProviderInflow> = {};
+  for (const r of data ?? []) {
+    const p = r.provider as string;
+    const cur = out[p] ?? { totalKobo: 0, count: 0, lastAt: null };
+    cur.totalKobo += Number(r.amount_kobo) || 0;
+    cur.count += 1;
+    const at = r.created_at as string;
+    if (!cur.lastAt || at > cur.lastAt) cur.lastAt = at;
+    out[p] = cur;
+  }
+  return out;
+}

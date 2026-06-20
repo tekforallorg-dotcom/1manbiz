@@ -14,11 +14,14 @@ import {
 } from "../../../lib/connectors";
 import {
   getPaymentConnectors,
+  getInflowByProvider,
   paymentHealth,
   PAYMENT_PROVIDERS,
   type PaymentConnectorRow,
+  type ProviderInflow,
   type ProviderMeta,
 } from "../../../lib/payment-connectors";
+import { formatNaira } from "../../../lib/format";
 import { ConnectorCard } from "../../../components/connector-card";
 import { WhatsappManageSheet } from "../../../components/whatsapp-manage-sheet";
 import { PaymentConnectSheet } from "../../../components/payment-connect-sheet";
@@ -53,6 +56,7 @@ export default function ConnectorsScreen() {
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [connectors, setConnectors] = useState<ChannelConnector[] | null>(null);
   const [payments, setPayments] = useState<PaymentConnectorRow[] | null>(null);
+  const [inflow, setInflow] = useState<Record<string, ProviderInflow> | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
@@ -62,6 +66,7 @@ export default function ConnectorsScreen() {
     if (!userId) {
       setConnectors([]);
       setPayments([]);
+      setInflow({});
       return;
     }
     const bid = await getActiveBusinessId(userId);
@@ -69,14 +74,17 @@ export default function ConnectorsScreen() {
     if (!bid) {
       setConnectors([]);
       setPayments([]);
+      setInflow({});
       return;
     }
-    const [chans, pays] = await Promise.all([
+    const [chans, pays, inf] = await Promise.all([
       getChannelConnectors(bid),
       getPaymentConnectors(bid),
+      getInflowByProvider(bid),
     ]);
     setConnectors(chans);
     setPayments(pays);
+    setInflow(inf);
   }, [userId]);
 
   useFocusEffect(
@@ -147,6 +155,11 @@ export default function ConnectorsScreen() {
           ) : (
             PAYMENT_PROVIDERS.map((p) => {
               const row = (payments ?? []).find((r) => r.provider === p.provider) ?? null;
+              const inflowRow = inflow?.[p.provider];
+              const collected =
+                inflowRow && inflowRow.totalKobo > 0
+                  ? `${formatNaira(inflowRow.totalKobo)} collected`
+                  : null;
               return (
                 <ConnectorCard
                   key={p.provider}
@@ -155,7 +168,7 @@ export default function ConnectorsScreen() {
                   logo={<ProviderLogo domain={p.domain} name={p.name} />}
                   health={paymentHealth(row)}
                   detail={row?.displayLabel ?? null}
-                  metaLine={row ? "Manual" : null}
+                  metaLine={collected ?? (row ? "Manual" : null)}
                   onPress={() => setSelectedProvider(p)}
                 />
               );
