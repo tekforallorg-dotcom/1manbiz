@@ -1,7 +1,8 @@
 import { useCallback, useState } from "react";
 import {
-  View, Text, ScrollView, Pressable, TextInput, Switch, ActivityIndicator, Alert, Image, Linking,
+  View, Text, ScrollView, Pressable, TextInput, Switch, ActivityIndicator, Image, Linking,
 } from "react-native";
+import { useNotifier } from "../../../components/notifier";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 
@@ -59,6 +60,7 @@ export default function SettingsScreen() {
   const userId = session?.user?.id;
 
   const [businessId, setBusinessId] = useState<string | null>(null);
+  const { notify } = useNotifier();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -90,7 +92,7 @@ export default function SettingsScreen() {
       setLinkedPhone(result.alreadyLinked ? result.linkedPhone : null);
       setLinkWaLink(result.waLink);
     } else {
-      Alert.alert("Manage by WhatsApp", result.error);
+      notify({ type: "error", title: "Manage by WhatsApp", message: result.error });
     }
   };
 
@@ -101,10 +103,10 @@ export default function SettingsScreen() {
       if (ok) {
         await Linking.openURL(linkWaLink);
       } else {
-        Alert.alert("Manage by WhatsApp", "Could not open WhatsApp. Send the code shown above to your shop instead.");
+        notify({ type: "info", title: "Manage by WhatsApp", message: "Could not open WhatsApp. Send the code shown above to your shop instead." });
       }
     } catch {
-      Alert.alert("Manage by WhatsApp", "Could not open WhatsApp. Send the code shown above to your shop instead.");
+      notify({ type: "info", title: "Manage by WhatsApp", message: "Could not open WhatsApp. Send the code shown above to your shop instead." });
     }
   };
 
@@ -150,15 +152,12 @@ export default function SettingsScreen() {
     if (!businessId) return;
     const trimmedName = name.trim();
     if (!trimmedName) {
-      Alert.alert("Settings", "Business name cannot be empty.");
+      notify({ type: "error", title: "Settings", message: "Business name cannot be empty." });
       return;
     }
     const trimmedAddress = address.trim();
     if ((fulfillment === "pickup" || fulfillment === "both") && !trimmedAddress) {
-      Alert.alert(
-        "Settings",
-        "Add your store address so pickup customers know where to come.",
-      );
+      notify({ type: "error", title: "Settings", message: "Add your store address so pickup customers know where to come." });
       return;
     }
     setSaving(true);
@@ -178,7 +177,7 @@ export default function SettingsScreen() {
       })
       .eq("id", businessId);
     setSaving(false);
-    Alert.alert("Settings", error ? "Could not save. Please try again." : "Saved.");
+    notify({ type: error ? "error" : "success", title: "Settings", message: error ? "Could not save. Please try again." : "Saved." });
   };
 
   const changeLogo = async () => {
@@ -190,7 +189,7 @@ export default function SettingsScreen() {
       setLogoPath(result.path);
       setLogoPreview(result.localUri);
     } else if (result.status === "error") {
-      Alert.alert("Logo", result.message);
+      notify({ type: "error", title: "Logo", message: result.message });
     }
   };
 

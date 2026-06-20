@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
-import { View, Text, ScrollView, ActivityIndicator, Pressable, Linking, Share, Alert } from "react-native";
+import { View, Text, ScrollView, ActivityIndicator, Pressable, Linking, Share } from "react-native";
+import { useNotifier } from "../../../components/notifier";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { ExternalLink, Share2, Send } from "lucide-react-native";
@@ -15,6 +16,7 @@ const WEB_BASE = API_BASE_URL;
 export default function ReceiptDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [order, setOrder] = useState<OrderDetail | null>(null);
+  const { notify } = useNotifier();
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [resending, setResending] = useState(false);
@@ -43,16 +45,13 @@ export default function ReceiptDetailScreen() {
     const result = await resendReceipt(order.id);
     setResending(false);
     if (!result.ok) {
-      Alert.alert("Could not resend", result.error ?? "Please try again.");
+      notify({ type: "error", title: "Could not resend", message: result.error ?? "Please try again." });
       return;
     }
     if (result.sent) {
-      Alert.alert("Receipt sent", "The receipt was sent to " + (order.customer_name ?? "the customer") + " on WhatsApp.");
+      notify({ type: "success", title: "Receipt sent", message: "The receipt was sent to " + (order.customer_name ?? "the customer") + " on WhatsApp." });
     } else {
-      Alert.alert(
-        "Not sent on WhatsApp",
-        "We could not message the customer right now (their chat window may be closed). Use Share link to send it another way.",
-      );
+      notify({ type: "info", title: "Not sent on WhatsApp", message: "We could not message the customer right now (their chat window may be closed). Use Share link to send it another way." });
     }
   };
 

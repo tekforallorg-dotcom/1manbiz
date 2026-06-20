@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
-import { View, Text, ScrollView, Pressable, RefreshControl, TextInput, Share, Alert } from "react-native";
+import { View, Text, ScrollView, Pressable, RefreshControl, TextInput, Share } from "react-native";
+import { useNotifier } from "../../../components/notifier";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, router } from "expo-router";
 import { ChevronRight, Search, UserPlus, Share2 } from "lucide-react-native";
@@ -11,6 +12,7 @@ import { supabase } from "../../../lib/supabase";
 import { createCustomer } from "../../../lib/customers";
 import { formatNaira, formatDateTime } from "../../../lib/format";
 import { AddCustomerSheet } from "../../../components/add-customer-sheet";
+import { SummaryStrip } from "../../../components/summary-strip";
 
 type CustomerRow = {
   id: string;
@@ -35,6 +37,7 @@ export default function CustomersScreen() {
   const { session } = useSession();
   const userId = session?.user?.id;
   const [customers, setCustomers] = useState<CustomerRow[] | null>(null);
+  const { notify } = useNotifier();
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -111,7 +114,7 @@ export default function CustomersScreen() {
 
   const onExport = useCallback(async () => {
     const list = customers ?? [];
-    if (list.length === 0) { Alert.alert("Nothing to share", "You have no customers yet."); return; }
+    if (list.length === 0) { notify({ type: "info", title: "Nothing to share", message: "You have no customers yet." }); return; }
     const header = (businessName ? businessName + " - " : "") + "customer book (" + list.length + ")";
     const lines = list.map((c, i) =>
       (i + 1) + ". " + c.name + " - " + (c.phone_e164 || "no phone") +
@@ -149,6 +152,15 @@ export default function CustomersScreen() {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#9CA3AF" />}
       >
+        {customers && customers.length > 0 ? (
+          <SummaryStrip
+            items={[
+              { label: "Total spent", value: formatNaira(customers.reduce((sum, c) => sum + (c.total_spent_kobo || 0), 0)), tone: "lead" },
+              { label: "Customers", value: String(customers.length) },
+              { label: "Repeat", value: String(customers.filter((c) => c.total_orders >= 2).length) },
+            ]}
+          />
+        ) : null}
         {loading && !customers ? (
           <Text className="text-textMuted text-sm">Loading customers…</Text>
         ) : customers && customers.length === 0 ? (

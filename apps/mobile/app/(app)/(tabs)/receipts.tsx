@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
-import { View, Text, ScrollView, Pressable, RefreshControl, Alert, Linking, Share } from "react-native";
+import { View, Text, ScrollView, Pressable, RefreshControl, Linking, Share } from "react-native";
+import { useNotifier } from "../../../components/notifier";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, router } from "expo-router";
 import { ChevronRight } from "lucide-react-native";
@@ -12,6 +13,7 @@ import { resendReceipt } from "../../../lib/order-detail";
 import { formatNaira, formatDateTime } from "../../../lib/format";
 import { API_BASE_URL } from "../../../lib/config";
 import { ReceiptActionsSheet } from "../../../components/receipt-actions-sheet";
+import { SummaryStrip } from "../../../components/summary-strip";
 
 const WEB_BASE = API_BASE_URL;
 
@@ -41,6 +43,7 @@ export default function ReceiptsScreen() {
   const { session } = useSession();
   const userId = session?.user?.id;
   const [rows, setRows] = useState<ReceiptRow[] | null>(null);
+  const { notify } = useNotifier();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<ReceiptRow | null>(null);
@@ -105,16 +108,13 @@ export default function ReceiptsScreen() {
     setResending(false);
     setSelected(null);
     if (!result.ok) {
-      Alert.alert("Could not resend", result.error ?? "Please try again.");
+      notify({ type: "error", title: "Could not resend", message: result.error ?? "Please try again." });
       return;
     }
     if (result.sent) {
-      Alert.alert("Receipt sent", "The receipt was sent to " + customerName(r.customers) + " on WhatsApp.");
+      notify({ type: "success", title: "Receipt sent", message: "The receipt was sent to " + customerName(r.customers) + " on WhatsApp." });
     } else {
-      Alert.alert(
-        "Not sent on WhatsApp",
-        "We could not message the customer right now (their chat window may be closed). Use Share link to send it another way.",
-      );
+      notify({ type: "info", title: "Not sent on WhatsApp", message: "We could not message the customer right now (their chat window may be closed). Use Share link to send it another way." });
     }
   }, []);
 
@@ -129,6 +129,15 @@ export default function ReceiptsScreen() {
         contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 24 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#9CA3AF" />}
       >
+        {rows && rows.length > 0 ? (
+          <SummaryStrip
+            items={[
+              { label: "Collected", value: formatNaira(rows.reduce((sum, r) => sum + (r.subtotal_kobo || 0), 0)), tone: "lead" },
+              { label: "Receipts", value: String(rows.length) },
+              { label: "Average", value: formatNaira(rows.length ? Math.round(rows.reduce((sum, r) => sum + (r.subtotal_kobo || 0), 0) / rows.length) : 0) },
+            ]}
+          />
+        ) : null}
         {loading && !rows ? (
           <Text className="text-textMuted text-sm">Loading receipts…</Text>
         ) : rows && rows.length === 0 ? (
