@@ -21,11 +21,6 @@ export type InitializeInput = {
   reference: string;
   callbackUrl: string;
   metadata: Record<string, unknown>;
-  // Optional vendor subaccount for split settlement. When present, Paystack
-  // applies the subaccount's stored percentage_charge automatically (platform
-  // share to the main account, the rest to the vendor). Absent -> platform
-  // collects in full, exactly as before.
-  subaccount?: string;
 };
 
 export type InitializeResult =
@@ -54,7 +49,6 @@ export async function initializeTransaction(
         reference: input.reference,
         callback_url: input.callbackUrl,
         metadata: input.metadata,
-        ...(input.subaccount ? { subaccount: input.subaccount } : {}),
       }),
     });
   } catch (err) {
@@ -114,40 +108,56 @@ export type ListBanksResult =
 
 /** Nigerian bank/fintech list with NIP codes, for the settlement-account picker. */
 export async function listBanks(): Promise<ListBanksResult> {
-  let res: Response;
+  // Paystack paginates /bank; the default page misses most banks/fintechs, which
+  // is why a search for a common bank could come back empty. Walk the cursor
+  // (capped) so the picker gets the full Nigerian list.
+  const banks: Bank[] = [];
+  let next: string | null = null;
+  let pages = 0;
   try {
-    res = await fetch(PAYSTACK_BASE + "/bank?currency=NGN", {
-      method: "GET",
-      headers: { Authorization: "Bearer " + secretKey() },
-    });
+    do {
+      const url =
+        PAYSTACK_BASE +
+        "/bank?country=nigeria&perPage=100&use_cursor=true" +
+        (next ? "&next=" + encodeURIComponent(next) : "");
+      const res = await fetch(url, {
+        method: "GET",
+        headers: { Authorization: "Bearer " + secretKey() },
+      });
+
+      let body: unknown;
+      try {
+        body = await res.json();
+      } catch {
+        return { ok: false, error: "Paystack returned a non-JSON response", status: 502 };
+      }
+
+      const b = body as {
+        status?: boolean;
+        message?: string;
+        data?: Array<{ name?: string; code?: string }>;
+        meta?: { next?: string | null };
+      };
+
+      if (!res.ok || !b.status || !Array.isArray(b.data)) {
+        console.error("[paystack] listBanks failed:", res.status, b.message ?? "no message");
+        return { ok: false, error: b.message ?? "Paystack list banks failed", status: res.status || 502 };
+      }
+
+      for (const x of b.data) {
+        if (x.name && x.code) banks.push({ name: x.name, code: x.code });
+      }
+      next = b.meta?.next ?? null;
+      pages += 1;
+    } while (next && pages < 5);
   } catch (err) {
+    console.error("[paystack] listBanks network error:", err);
     return {
       ok: false,
       error: "Could not reach Paystack: " + (err instanceof Error ? err.message : "network error"),
       status: 502,
     };
   }
-
-  let body: unknown;
-  try {
-    body = await res.json();
-  } catch {
-    return { ok: false, error: "Paystack returned a non-JSON response", status: 502 };
-  }
-
-  const b = body as {
-    status?: boolean;
-    message?: string;
-    data?: Array<{ name?: string; code?: string }>;
-  };
-
-  if (!res.ok || !b.status || !Array.isArray(b.data)) {
-    return { ok: false, error: b.message ?? "Paystack list banks failed", status: res.status || 502 };
-  }
-
-  const banks: Bank[] = b.data
-    .filter((x): x is { name: string; code: string } => Boolean(x.name && x.code))
-    .map((x) => ({ name: x.name, code: x.code }));
   return { ok: true, banks };
 }
 
