@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 // Platform's share of each online transaction (Paystack percentage_charge): the
 // main account keeps this percent and the vendor's subaccount gets the rest.
 // Adjust to set the SaaS take rate.
-const PLATFORM_SPLIT_PERCENT = 2;
+const PLATFORM_SPLIT_PERCENT = 1.5;
 
 export async function POST(request: NextRequest) {
   const userId = await authenticateRequest(request);
