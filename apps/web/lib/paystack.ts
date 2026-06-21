@@ -21,6 +21,11 @@ export type InitializeInput = {
   reference: string;
   callbackUrl: string;
   metadata: Record<string, unknown>;
+  // Optional vendor subaccount for split settlement. When present, Paystack
+  // applies the subaccount's stored percentage_charge automatically (platform
+  // share to the main account, the rest to the vendor). Absent -> platform
+  // collects in full, exactly as before.
+  subaccount?: string;
 };
 
 export type InitializeResult =
@@ -49,6 +54,7 @@ export async function initializeTransaction(
         reference: input.reference,
         callback_url: input.callbackUrl,
         metadata: input.metadata,
+        ...(input.subaccount ? { subaccount: input.subaccount } : {}),
       }),
     });
   } catch (err) {

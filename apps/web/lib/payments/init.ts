@@ -105,12 +105,30 @@ export async function initPaymentForBusinessOrder(
   const reference = buildReference(order.id);
   const callbackUrl = origin + "/pay/" + reference;
 
+  // Per-vendor split settlement: if this business has a Paystack subaccount on
+  // file, route the charge through it so Paystack splits the payout (platform
+  // share + vendor share) and settles the vendor's part to their own bank. No
+  // subaccount -> the platform collects in full, exactly as before. Keyed on
+  // the stored subaccount_code, not the connector status, so a manually created
+  // link still pays the vendor even if auto-send is toggled off.
+  const { data: paystackConnector } = await admin
+    .from("payment_connectors")
+    .select("subaccount_code")
+    .eq("business_id", businessId)
+    .eq("provider", "paystack")
+    .maybeSingle();
+  const subaccount =
+    paystackConnector && typeof paystackConnector.subaccount_code === "string"
+      ? paystackConnector.subaccount_code
+      : undefined;
+
   const init = await initializeTransaction({
     email: customerEmail,
     amountKobo,
     reference,
     callbackUrl,
     metadata: { order_id: order.id, business_id: businessId, delivery_fee_kobo: deliveryFeeKobo },
+    subaccount,
   });
 
   if (!init.ok) {
