@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { API_BASE_URL } from "./config";
 import type { ConnectorHealth } from "./connectors";
 
 // Money connectors: per-business payment-rail connections that feed the Money
@@ -224,4 +225,88 @@ export async function setOnlinePayments(
     if (error) console.error("[payment-connectors] online row update:", error);
   }
   return {};
+}
+
+// ---------------------------------------------------------------------------
+// Per-vendor Paystack subaccount onboarding (calls the web connect API).
+// ---------------------------------------------------------------------------
+
+export type PaystackBank = { name: string; code: string };
+
+async function bearer(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
+}
+
+export async function listPaystackBanks(): Promise<
+  { ok: true; banks: PaystackBank[] } | { ok: false; error: string }
+> {
+  const token = await bearer();
+  if (!token) return { ok: false, error: "Not signed in" };
+  try {
+    const res = await fetch(API_BASE_URL + "/api/connectors/paystack/banks", {
+      headers: { Authorization: "Bearer " + token },
+    });
+    const body = await res.json();
+    if (!res.ok || !body.ok) return { ok: false, error: body.error ?? "Could not load banks" };
+    return { ok: true, banks: (body.banks as PaystackBank[]) ?? [] };
+  } catch {
+    return { ok: false, error: "Network error. Please try again." };
+  }
+}
+
+export async function connectPaystackSubaccount(
+  bankCode: string,
+  accountNumber: string,
+  bankName: string,
+): Promise<
+  { ok: true; accountName: string; bankName: string; splitPercent: number } | { ok: false; error: string }
+> {
+  const token = await bearer();
+  if (!token) return { ok: false, error: "Not signed in" };
+  try {
+    const res = await fetch(API_BASE_URL + "/api/connectors/paystack/subaccount", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ bankCode, accountNumber, bankName }),
+    });
+    const body = await res.json();
+    if (!res.ok || !body.ok) return { ok: false, error: body.error ?? "Could not connect" };
+    return {
+      ok: true,
+      accountName: (body.accountName as string) ?? "",
+      bankName: (body.bankName as string) ?? bankName,
+      splitPercent: (body.splitPercent as number) ?? 0,
+    };
+  } catch {
+    return { ok: false, error: "Network error. Please try again." };
+  }
+}
+
+export type PaystackSettlement = {
+  subaccountCode: string;
+  bankName: string | null;
+  accountName: string | null;
+  accountNumber: string | null;
+  splitPercent: number | null;
+};
+
+/** The vendor's stored Paystack settlement details, or null if no subaccount. */
+export async function getPaystackSettlement(businessId: string): Promise<PaystackSettlement | null> {
+  const { data, error } = await supabase
+    .from("payment_connectors")
+    .select(
+      "subaccount_code, settlement_bank_name, settlement_account_name, settlement_account_number, platform_split_percent",
+    )
+    .eq("business_id", businessId)
+    .eq("provider", "paystack")
+    .maybeSingle();
+  if (error || !data?.subaccount_code) return null;
+  return {
+    subaccountCode: data.subaccount_code as string,
+    bankName: (data.settlement_bank_name as string | null) ?? null,
+    accountName: (data.settlement_account_name as string | null) ?? null,
+    accountNumber: (data.settlement_account_number as string | null) ?? null,
+    splitPercent: (data.platform_split_percent as number | null) ?? null,
+  };
 }

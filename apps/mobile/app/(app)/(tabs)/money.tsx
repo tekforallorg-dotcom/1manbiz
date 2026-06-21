@@ -3,6 +3,7 @@ import { View, Text, ScrollView, RefreshControl, Pressable } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter, type Href } from "expo-router";
 import { Plus } from "lucide-react-native";
+import { colors } from "@1manbiz/design";
 
 import { useSession } from "../../../lib/session";
 import { getActiveBusinessId } from "../../../lib/business";
@@ -20,7 +21,7 @@ const PERIODS: { value: MoneyPeriodDays; label: string }[] = [
   { value: 90, label: "90D" },
 ];
 
-const HERO_BG = "#15803D";
+const HERO_BG = colors.primary;
 
 function pad(n: number): string {
   return n < 10 ? "0" + n : String(n);

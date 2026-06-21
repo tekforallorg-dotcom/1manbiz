@@ -28,7 +28,7 @@ import { ConnectorCard } from "../../../components/connector-card";
 import { WhatsappManageSheet } from "../../../components/whatsapp-manage-sheet";
 import { PaymentConnectSheet } from "../../../components/payment-connect-sheet";
 import { ProviderLogo } from "../../../components/provider-logo";
-import { OnlinePaymentsSheet } from "../../../components/online-payments-sheet";
+import { PaystackConnectSheet } from "../../../components/paystack-connect-sheet";
 
 function SectionHeading({ children }: { children: string }) {
   return (
@@ -214,9 +214,8 @@ export default function ConnectorsScreen() {
 
       {selectedProvider && businessId ? (
         selectedProvider.kind === "online" ? (
-          <OnlinePaymentsSheet
+          <PaystackConnectSheet
             businessId={businessId}
-            on={onlineOn}
             visible={!!selectedProvider}
             onClose={() => setSelectedProvider(null)}
             onChanged={() => {
